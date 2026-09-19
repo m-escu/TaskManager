@@ -258,4 +258,15 @@
     <string name="batt_recording">历史记录</string>
     <string name="batt_recording_desc">本页打开期间每分钟保存一个样本。历史保留 30 天，绝不上传。</string>
     <string name="batt_samples_stored">已存样本：%1$d</string>
+    <string name="net_live_rates">实时速率</string>
+    <string name="net_download">下载</string>
+    <string name="net_upload">上传</string>
+    <string name="net_per_app">分应用流量</string>
+    <string name="net_app_traffic">收 %1$s / 发 %2$s</string>
+    <string name="net_usage_access_desc">分应用流量来自系统网络统计，需要“使用情况访问”权限。在有 root 的设备上可以直接授予。</string>
+    <string name="net_grant_via_root">通过 root 授权</string>
+    <string name="net_open_settings">打开设置</string>
+    <string name="net_grant_failed">无法自动授予使用情况访问权限</string>
+    <string name="net_no_data">该时段未记录到流量。</string>
+    <string name="net_showing_top">仅显示前 %1$d 个应用。</string>
 </resources>

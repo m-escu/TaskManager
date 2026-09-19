@@ -279,4 +279,15 @@
     <string name="batt_recording">History recording</string>
     <string name="batt_recording_desc">One sample is stored every minute while this screen is open. History is kept for 30 days and never leaves the device.</string>
     <string name="batt_samples_stored">Samples stored: %1$d</string>
+    <string name="net_live_rates">Live rates</string>
+    <string name="net_download">Download</string>
+    <string name="net_upload">Upload</string>
+    <string name="net_per_app">Per-app traffic</string>
+    <string name="net_app_traffic">Down %1$s / Up %2$s</string>
+    <string name="net_usage_access_desc">Per-app traffic totals come from the system network accounting and need Usage access. On rooted devices it can be granted directly.</string>
+    <string name="net_grant_via_root">Grant via root</string>
+    <string name="net_open_settings">Open settings</string>
+    <string name="net_grant_failed">Could not grant Usage access automatically</string>
+    <string name="net_no_data">No traffic recorded for this period.</string>
+    <string name="net_showing_top">Showing the top %1$d apps.</string>
 </resources>

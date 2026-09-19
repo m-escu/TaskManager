@@ -1,52 +1,431 @@
 package com.rk.taskmanager.screens.net
 
+import android.app.AppOpsManager
+import android.content.Context
+import android.content.Intent
+import android.graphics.drawable.Drawable
+import android.net.NetworkStats
+import android.net.NetworkStatsManager
+import android.net.NetworkTemplate
+import android.provider.Settings
+import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
+import com.rk.commons.charts.GraphDataHandler
+import com.rk.commons.charts.UsageChart
+import com.rk.commons.getString
+import com.rk.commons.settings.Settings
+import com.rk.commons.strings
+import com.rk.commons.ui.InfoCard
+import com.rk.commons.ui.InfoItem
+import com.rk.commons.ui.SectionHeader
+import com.rk.commons.utils.FormatUtils
 import com.rk.taskmanager.R
+import com.rk.taskmanager.daemon.DaemonServer
+import com.rk.taskmanager.navControllerRef
+import com.rk.taskmanager.screens.drawableTobitMap
+import com.rk.taskmanager.screens.selectedscreen
+import com.rk.taskmanager.settings.SettingsRoutes
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.io.File
+
+val netGraphHandler = GraphDataHandler(seriesCount = 2)
+
+private val NET_PERIOD_DAYS = intArrayOf(1, 7, 30)
+private const val MAX_APP_ROWS = 50
+
+/** One app (or uid) row of the per-app traffic list. */
+data class AppNetUsage(
+    val uid: Int,
+    val packageName: String?,
+    val label: String,
+    val rxBytes: Long,
+    val txBytes: Long,
+    val icon: Drawable?,
+)
+
+/** True when the app holds the PACKAGE_USAGE_STATS appop (needed for per-app traffic). */
+fun hasUsageAccess(context: Context): Boolean {
+    val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager
+        ?: return false
+    val mode = appOps.checkOpNoThrow(
+        AppOpsManager.OPSTR_GET_USAGE_STATS,
+        android.os.Process.myUid(),
+        context.packageName,
+    )
+    return mode == AppOpsManager.MODE_ALLOWED
+}
 
 /**
- * Placeholder for the network screen. The original implementation of this screen was part of
- * the closed-source Pro module, which this fork does not include. A native, fully open-source
- * implementation (per-interface traffic from the daemon + per-app usage) replaces it in a
- * subsequent update.
+ * Self-grant attempt (fork roadmap: "appops self-grant"): the app already
+ * talks to a root daemon, so on rooted devices `su` can grant the usage
+ * access appop without the user hunting through settings. Shizuku users get
+ * the settings route instead.
+ */
+suspend fun grantUsageAccessViaRoot(context: Context): Boolean = withContext(Dispatchers.IO) {
+    try {
+        val process = Runtime.getRuntime()
+            .exec(arrayOf("su", "-c", "appops set ${context.packageName} PACKAGE_USAGE_STATS allow"))
+        process.waitFor() == 0 && hasUsageAccess(context)
+    } catch (_: Exception) {
+        false
+    }
+}
+
+/** Aggregates Wi-Fi + mobile + Ethernet buckets per uid; null when access is missing. */
+suspend fun queryPerAppUsage(
+    context: Context,
+    sinceMs: Long,
+): Map<Int, LongArray>? = withContext(Dispatchers.IO) {
+    if (!hasUsageAccess(context)) return@withContext null
+    val nsm = context.getSystemService(NetworkStatsManager::class.java)
+        ?: return@withContext null
+    val end = System.currentTimeMillis()
+    val perUid = HashMap<Int, LongArray>(256)
+    // The static template builders are deprecated on newer APIs but remain the
+    // only version-spanning way (26..36) to express these match rules.
+    val templates = listOf(
+        NetworkTemplate.buildTemplateWifi(),
+        NetworkTemplate.buildTemplateMobile(),
+        NetworkTemplate.buildTemplateEthernet(),
+    )
+    for (template in templates) {
+        try {
+            val stats = nsm.querySummary(template, sinceMs, end)
+            val bucket = NetworkStats.Bucket()
+            while (stats.hasNextBucket()) {
+                stats.getNextBucket(bucket)
+                if (bucket.rxBytes <= 0 && bucket.txBytes <= 0) continue
+                val agg = perUid.getOrPut(bucket.uid) { LongArray(2) }
+                agg[0] += bucket.rxBytes
+                agg[1] += bucket.txBytes
+            }
+            stats.close()
+        } catch (_: Exception) {
+            // This transport may not exist on the device — the others still count.
+        }
+    }
+    perUid
+}
+
+private fun toAppUsages(
+    context: Context,
+    perUid: Map<Int, LongArray>,
+): List<AppNetUsage> {
+    val pm = context.packageManager
+    return perUid.mapNotNull { (uid, bytes) ->
+        val packages = pm.getPackagesForUid(uid)
+        val packageName = packages?.firstOrNull()
+        val label = try {
+            if (packageName != null) {
+                pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
+            } else "uid $uid"
+        } catch (_: Exception) {
+            packageName ?: "uid $uid"
+        }
+        val icon = try {
+            if (packageName != null) pm.getApplicationIcon(packageName) else null
+        } catch (_: Exception) {
+            null
+        }
+        AppNetUsage(uid, packageName, label, bytes[0], bytes[1], icon)
+    }.sortedByDescending { it.rxBytes + it.txBytes }
+}
+
+/**
+ * Network screen (fork roadmap): live per-interface rates from the daemon's
+ * NET_PING, plus per-app traffic totals from NetworkStatsManager. Per-app
+ * data needs the PACKAGE_USAGE_STATS appop — self-granted via root when
+ * available, otherwise the system settings page is offered. The app itself
+ * still holds no INTERNET permission; this screen only reads accounting data.
  */
 @Composable
 fun NetScreen(modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var ifaces by remember { mutableStateOf(listOf("wlan0")) }
+    var selectedIface by rememberSaveable { mutableStateOf(Settings.selectedNetInterface) }
+    var downloadBps by remember { mutableStateOf(-1.0) }
+    var uploadBps by remember { mutableStateOf(-1.0) }
+
+    var usageGranted by remember { mutableStateOf(hasUsageAccess(context)) }
+    var periodDays by rememberSaveable { mutableIntStateOf(1) }
+    var apps by remember { mutableStateOf<List<AppNetUsage>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        ifaces = try {
+            File("/sys/class/net").listFiles()?.map { it.name }?.sorted() ?: listOf("wlan0")
+        } catch (_: Exception) {
+            listOf("wlan0")
+        }
+        if (selectedIface !in ifaces) selectedIface = ifaces.firstOrNull() ?: "wlan0"
+    }
+
+    // Live rates via request-id correlated NET_PING.
+    LaunchedEffect(selectedIface) {
+        if (selectedIface.isEmpty()) return@LaunchedEffect
+        while (isActive) {
+            val response = DaemonServer.request(
+                JSONObject().put("cmd", "NET_PING").put("interface", selectedIface),
+                timeoutMs = 2_000,
+            )
+            if (response != null && response.has("rxBytesPerSec")) {
+                downloadBps = response.optDouble("rxBytesPerSec", 0.0)
+                uploadBps = response.optDouble("txBytesPerSec", 0.0)
+                netGraphHandler.update(
+                    (downloadBps / 1024.0).toInt(),
+                    (uploadBps / 1024.0).toInt(),
+                ) {
+                    selectedscreen.intValue == 3 && navControllerRef.get()?.currentDestination?.route == SettingsRoutes.Home.route
+                }
+            }
+            delay(1000)
+        }
+    }
+
+    // Per-app totals for the selected period.
+    LaunchedEffect(periodDays, usageGranted) {
+        if (!usageGranted) {
+            apps = emptyList()
+            return@LaunchedEffect
+        }
+        val since = System.currentTimeMillis() - periodDays * 24L * 3600 * 1000
+        val perUid = queryPerAppUsage(context, since)
+        apps = if (perUid == null) emptyList() else toAppUsages(context, perUid)
+    }
+
+    Column(modifier.verticalScroll(rememberScrollState())) {
+        UsageChart(
+            modelProducer = netGraphHandler.modelProducer,
+            lineColors = listOf(
+                MaterialTheme.colorScheme.primary,
+                MaterialTheme.colorScheme.tertiary,
+            ),
+            modifier = modifier.fillMaxWidth()
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            HorizontalDivider()
+
+            InfoCard {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SectionHeader(stringResource(strings.net_live_rates))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ifaces.forEach { iface ->
+                            FilterChip(
+                                selected = selectedIface == iface,
+                                onClick = {
+                                    selectedIface = iface
+                                    Settings.selectedNetInterface = iface
+                                },
+                                label = { Text(iface) }
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            InfoItem(
+                                stringResource(strings.net_download),
+                                if (downloadBps >= 0) FormatUtils.formatBytes(downloadBps.toLong()) + "/s" else stringResource(strings.no_data),
+                                highlighted = true
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            InfoItem(
+                                stringResource(strings.net_upload),
+                                if (uploadBps >= 0) FormatUtils.formatBytes(uploadBps.toLong()) + "/s" else stringResource(strings.no_data),
+                                highlighted = true
+                            )
+                        }
+                    }
+                }
+            }
+
+            HorizontalDivider()
+
+            InfoCard {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SectionHeader(stringResource(strings.net_per_app))
+
+                    if (!usageGranted) {
+                        Text(
+                            text = stringResource(strings.net_usage_access_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row {
+                            TextButton(onClick = {
+                                scope.launch {
+                                    usageGranted = grantUsageAccessViaRoot(context)
+                                    if (!usageGranted) {
+                                        Toast.makeText(
+                                            context,
+                                            strings.net_grant_failed.getString(),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
+                            }) {
+                                Text(stringResource(strings.net_grant_via_root))
+                            }
+                            TextButton(onClick = {
+                                try {
+                                    context.startActivity(
+                                        Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                } catch (_: Exception) {
+                                }
+                            }) {
+                                Text(stringResource(strings.net_open_settings))
+                            }
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            NET_PERIOD_DAYS.forEach { days ->
+                                FilterChip(
+                                    selected = periodDays == days,
+                                    onClick = { periodDays = days },
+                                    label = {
+                                        Text(
+                                            when (days) {
+                                                1 -> stringResource(strings.batt_last_24h)
+                                                7 -> stringResource(strings.batt_last_7d)
+                                                else -> stringResource(strings.batt_last_30d)
+                                            }
+                                        )
+                                    }
+                                )
+                            }
+                        }
+
+                        if (apps.isEmpty()) {
+                            Text(
+                                text = stringResource(strings.net_no_data),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            apps.take(MAX_APP_ROWS).forEach { usage ->
+                                AppNetRow(usage)
+                            }
+                            if (apps.size > MAX_APP_ROWS) {
+                                Text(
+                                    text = stringResource(strings.net_showing_top, MAX_APP_ROWS),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.padding(vertical = 16.dp))
+    }
+}
+
+@Composable
+fun AppNetRow(usage: AppNetUsage) {
+    val iconBitmap: ImageBitmap? = remember(usage.icon) {
+        usage.icon?.let { drawableTobitMap(it)?.asImageBitmap() }
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = stringResource(R.string.net_screen_title),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurface
-        )
+        if (iconBitmap != null) {
+            Image(
+                bitmap = iconBitmap,
+                contentDescription = null,
+                modifier = Modifier.size(22.dp)
+            )
+        } else {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_android_black_24dp),
+                contentDescription = null,
+                modifier = Modifier.size(22.dp)
+            )
+        }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.padding(start = 10.dp))
 
-        Text(
-            text = stringResource(R.string.screen_rebuilt_notice),
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = usage.label,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1
+            )
+            Text(
+                text = stringResource(
+                    strings.net_app_traffic,
+                    FormatUtils.formatBytes(usage.rxBytes), FormatUtils.formatBytes(usage.txBytes)
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }

@@ -248,4 +248,15 @@
     <string name="batt_recording">Запись истории</string>
     <string name="batt_recording_desc">Одна проба сохраняется каждую минуту, пока открыт экран. История хранится 30 дней и не покидает устройство.</string>
     <string name="batt_samples_stored">Сохранено проб: %1$d</string>
+    <string name="net_live_rates">Скорость в реальном времени</string>
+    <string name="net_download">Загрузка</string>
+    <string name="net_upload">Отдача</string>
+    <string name="net_per_app">Трафик по приложениям</string>
+    <string name="net_app_traffic">Приём %1$s / Отдача %2$s</string>
+    <string name="net_usage_access_desc">Итоги трафика по приложениям берутся из системного учёта сети и требуют «Доступ к использованию». На устройствах с root его можно выдать напрямую.</string>
+    <string name="net_grant_via_root">Выдать через root</string>
+    <string name="net_open_settings">Открыть настройки</string>
+    <string name="net_grant_failed">Не удалось выдать доступ автоматически</string>
+    <string name="net_no_data">За этот период трафик не зафиксирован.</string>
+    <string name="net_showing_top">Показаны первые %1$d приложений.</string>
 </resources>

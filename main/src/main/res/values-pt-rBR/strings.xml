@@ -259,4 +259,15 @@
     <string name="batt_recording">Registro do histórico</string>
     <string name="batt_recording_desc">Uma amostra é salva a cada minuto com esta tela aberta. O histórico é mantido por 30 dias e nunca sai do dispositivo.</string>
     <string name="batt_samples_stored">Amostras armazenadas: %1$d</string>
+    <string name="net_live_rates">Taxas em tempo real</string>
+    <string name="net_download">Download</string>
+    <string name="net_upload">Upload</string>
+    <string name="net_per_app">Tráfego por app</string>
+    <string name="net_app_traffic">Recebido %1$s / Enviado %2$s</string>
+    <string name="net_usage_access_desc">Os totais por app vêm da contagem de rede do sistema e precisam do acesso de Uso. Em dispositivos com root, pode ser concedido diretamente.</string>
+    <string name="net_grant_via_root">Conceder via root</string>
+    <string name="net_open_settings">Abrir configurações</string>
+    <string name="net_grant_failed">Não foi possível conceder o acesso de Uso automaticamente</string>
+    <string name="net_no_data">Nenhum tráfego registrado neste período.</string>
+    <string name="net_showing_top">Mostrando os %1$d principais apps.</string>
 </resources>

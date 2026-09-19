@@ -4,6 +4,9 @@
     <uses-permission android:name="rikka.shizuku.permission.API_V23" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="PackageVisibilityPolicy,QueryAllPackagesPermission" />
+    <!-- Network accounting only (NetworkStatsManager). This is NOT the
+         INTERNET permission: the app still opens no sockets itself. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:allowBackup="true"

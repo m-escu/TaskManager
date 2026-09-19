@@ -123,4 +123,15 @@
     <string name="batt_recording">Geçmiş kaydı</string>
     <string name="batt_recording_desc">Bu ekran açıkken her dakika bir örnek kaydedilir. Geçmiş 30 gün tutulur ve cihazdan çıkmaz.</string>
     <string name="batt_samples_stored">Kaydedilen örnek: %1$d</string>
+    <string name="net_live_rates">Canlı hızlar</string>
+    <string name="net_download">İndirme</string>
+    <string name="net_upload">Yükleme</string>
+    <string name="net_per_app">Uygulama başına trafik</string>
+    <string name="net_app_traffic">İn %1$s / Çık %2$s</string>
+    <string name="net_usage_access_desc">Uygulama başına trafik toplamları sistem ağ hesaplamasından gelir ve Kullanım erişimi gerektirir. Root'lu cihazlarda doğrudan verilebilir.</string>
+    <string name="net_grant_via_root">Root ile ver</string>
+    <string name="net_open_settings">Ayarları aç</string>
+    <string name="net_grant_failed">Kullanım erişimi otomatik olarak verilemedi</string>
+    <string name="net_no_data">Bu dönemde trafik kaydedilmedi.</string>
+    <string name="net_showing_top">En yüksek ilk %1$d uygulama gösteriliyor.</string>
 </resources>
