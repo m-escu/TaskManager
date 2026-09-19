@@ -24,14 +24,14 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.rk.bridge.OpenSourceOnly
-import com.rk.bridge.bridge
 import com.rk.commons.strings
 import com.rk.taskmanager.ProcessViewModel
 import com.rk.taskmanager.R
+import com.rk.taskmanager.screens.battery.BatteryScreen
 import com.rk.taskmanager.screens.cpu.CPU
 import com.rk.taskmanager.screens.gpu.GPU
 import com.rk.taskmanager.screens.gpu.GpuViewModel
+import com.rk.taskmanager.screens.net.NetScreen
 import com.rk.taskmanager.screens.ram.RAM
 
 private data class ResourceTab(
@@ -80,9 +80,8 @@ private val tabs = listOf(
     ResourceTab(
         labelRes = strings.net,
         icon = TabIcon.Vector(Icons.Outlined.NetworkCheck),
-        content = { _, _, _ ->
-            if (bridge != null) bridge!!.NetScreen()
-            else OpenSourceOnly()
+        content = { modifier, _, _ ->
+            NetScreen(modifier)
         }
     ),
 
@@ -92,8 +91,7 @@ private val tabs = listOf(
         labelRes = strings.bat,
         icon = TabIcon.Vector(Icons.Outlined.BatteryChargingFull),
         content = { modifier, _, _ ->
-            if (bridge != null) bridge!!.BatteryScreen()
-            else OpenSourceOnly()
+            BatteryScreen(modifier)
         }
     )
 

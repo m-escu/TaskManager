@@ -9,8 +9,6 @@ ndk = "28.0.13004108"
 #shizuku api
 api = "13.1.5"
 appcompat = "1.7.1"
-billingKtx = "8.3.0"
-javascriptengine = "1.0.0"
 material = "1.13.0"
 kotlin = "2.3.21"
 kotlinPlugin = "2.3.21"
@@ -22,11 +20,9 @@ lifecycleRuntimeKtx = "2.10.0"
 activityCompose = "1.13.0"
 composeBom = "2026.04.01"
 navigationCompose = "2.9.8"
-playServicesBase = "18.10.0"
 roomRuntime = "2.8.4"
 roomCompiler = "2.8.4"
 roomKtx = "2.8.4"
-userMessagingPlatform = "4.0.0"
 
 #dont update
 vico = "2.0.3"
@@ -41,16 +37,13 @@ runtime = "1.11.0"
 material3 = "1.4.0"
 
 [libraries]
-billing-ktx = { module = "com.android.billingclient:billing-ktx", version.ref = "billingKtx" }
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coilCompose" }
 coil-svg = { module = "io.coil-kt:coil-svg", version.ref = "coilSvg" }
 accompanist-swiperefresh = { module = "com.google.accompanist:accompanist-swiperefresh", version.ref = "accompanistSwiperefresh" }
-androidx-javascriptengine = { module = "androidx.javascriptengine:javascriptengine", version.ref = "javascriptengine" }
 androidx-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
 androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "roomKtx" }
 androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "roomCompiler" }
 androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "roomRuntime" }
-play-services-base = { module = "com.google.android.gms:play-services-base", version.ref = "playServicesBase" }
 shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "api" }
 appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
@@ -66,7 +59,6 @@ ui = { group = "androidx.compose.ui", name = "ui" }
 ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 material3 = { group = "androidx.compose.material3", name = "material3" }
 navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
-user-messaging-platform = { module = "com.google.android.ump:user-messaging-platform", version.ref = "userMessagingPlatform" }
 vico-compose-m3 = { group = "com.patrykandpatrick.vico", name = "compose-m3", version.ref = "vico" }
 vico-compose = { group = "com.patrykandpatrick.vico", name = "compose", version.ref = "vico" }
 androidx-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }

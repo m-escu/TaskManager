@@ -67,7 +67,6 @@ import androidx.core.graphics.createBitmap
 import androidx.core.net.toUri
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
-import com.rk.bridge.bridge
 import com.rk.components.SettingsToggle
 import com.rk.components.TextCard
 import com.rk.components.XedDialog
@@ -358,7 +357,7 @@ fun ProcessInfo(
                         label = if (proc.isPinned.value) stringResource(strings.unpin) else stringResource(strings.pin),
                         description = if (proc.isPinned.value) stringResource(strings.unpin_desc) else stringResource(strings.pin_desc),
                         default = proc.isPinned.value,
-                        isEnabled = bridge?.isPro()?.value == true,
+                        isEnabled = true,
                         showSwitch = true,
                         sideEffect = {
                             viewModel.togglePin(proc)

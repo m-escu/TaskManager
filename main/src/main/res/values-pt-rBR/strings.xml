@@ -62,7 +62,6 @@
     <string name="cosmos">Cosmos</string>
     <string name="root">Root</string>
     <string name="shizuku">Shizuku</string>
-    <string name="title_taskmanager_pro">TaskManager Pro</string>
     <string name="pin">Fixar</string>
     <string name="unpin">Desafixar</string>
     <string name="theme_mode">Modo do Tema</string>
@@ -78,8 +77,6 @@
     <string name="procs_desc">Configurações para a tela de processos</string>
     <string name="themes">Temas</string>
     <string name="themes_desc">Aparência e estilo</string>
-    <string name="pro_version">Versão Pro</string>
-    <string name="pro_version_desc">Desbloqueie recursos exclusivos</string>
     <string name="about">Sobre</string>
     <string name="about_desc">Informações do aplicativo</string>
 
@@ -93,7 +90,6 @@
     <string name="build_type">Tipo de Compilação</string>
     <string name="community">Comunidade</string>
     <string name="full">Completo</string>
-    <string name="is_pro">É Pro</string>
     <string name="yes">Sim</string>
     <string name="no">Não</string>
     <string name="copied_to_clipboard">Copiado para a área de transferência</string>
@@ -125,7 +121,6 @@
     <string name="what_you_get">O QUE VOCÊ GANHA</string>
     <string name="secure_payment">Pagamento seguro via Google Play</string>
     <string name="task_manager_uppercase">GERENCIADOR DE TAREFAS</string>
-    <string name="pro_version_tagline">Tudo o que você precisa para entender seu dispositivo a fundo.</string>
     <string name="one_time_purchase">Compra única</string>
     <string name="purchase_in_progress">Compra em andamento…</string>
     <string name="permanent_pro_access">Pague uma vez, tenha acesso Pro permanente.</string>

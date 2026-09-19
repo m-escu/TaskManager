@@ -33,12 +33,12 @@ android {
 
     signingConfigs {
         create("release") {
-            val isGITHUB_ACTION = System.getenv("GITHUB_ACTIONS") == "true"
+            val isGitHubAction = System.getenv("GITHUB_ACTIONS") == "true"
 
-            val propertiesFilePath = if (isGITHUB_ACTION) {
+            val propertiesFilePath = if (isGitHubAction) {
                 "/tmp/signing.properties"
             } else {
-                "/home/rohit/Android/xed-signing/signing.properties"
+                "signing.properties" // project root; see signing.properties.example
             }
 
             val propertiesFile = File(propertiesFilePath)
@@ -47,15 +47,23 @@ android {
                 properties.load(propertiesFile.inputStream())
                 keyAlias = properties["keyAlias"] as String?
                 keyPassword = properties["keyPassword"] as String?
-                storeFile = if (isGITHUB_ACTION) {
-                    File("/tmp/xed.keystore")
+                storeFile = if (isGitHubAction) {
+                    File("/tmp/fork.keystore")
                 } else {
                     (properties["storeFile"] as String?)?.let { File(it) }
                 }
-
                 storePassword = properties["storePassword"] as String?
             } else {
-                println("Signing properties file not found at $propertiesFilePath")
+                // No signing properties available: fall back to the debug keystore so that
+                // release builds remain installable on devices. Provide signing.properties
+                // (or CI secrets) to sign with a real key.
+                val debugKeystore = File(System.getProperty("user.home"), ".android/debug.keystore")
+                if (debugKeystore.exists()) {
+                    storeFile = debugKeystore
+                    storePassword = "android"
+                    keyAlias = "androiddebugkey"
+                    keyPassword = "android"
+                }
             }
         }
     }
@@ -78,13 +86,15 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.rk.taskmanager"
+        // Fork identity: different from upstream (com.rk.taskmanager) so both can coexist
+        // on the same device. The Shizuku provider authority derives from this ID.
+        applicationId = "com.mescu.taskmanager"
         minSdk = 26
         targetSdk = 37
 
         //versioning
-        versionCode = 56
-        versionName = "1.5.6"
+        versionCode = 60
+        versionName = "1.6.0-fork1"
         vectorDrawables {
             useSupportLibrary = true
         }
@@ -122,9 +132,5 @@ dependencies {
 
     implementation(libs.androidx.room.ktx)
 
-
-    if (findProject(":taskmanager_pro") != null) {
-        implementation(project(":taskmanager_pro"))
-    }
     implementation(project(":main"))
 }

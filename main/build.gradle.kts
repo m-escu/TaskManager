@@ -75,7 +75,6 @@ dependencies {
     implementation(libs.material)
     implementation(libs.material3)
     implementation(project(":taskmanagerd"))
-    implementation(libs.androidx.javascriptengine)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.coil.compose)
     implementation(libs.coil.svg)
@@ -86,7 +85,6 @@ dependencies {
     implementation(libs.appcompat)
     implementation(libs.material)
     implementation(project(":components"))
-    implementation(project(":bridge"))
     
     // Compose
     implementation(platform(libs.compose.bom))

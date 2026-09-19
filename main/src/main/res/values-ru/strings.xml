@@ -62,7 +62,6 @@
     <string name="cosmos">Cosmos</string>
     <string name="root">Root</string>
     <string name="shizuku">Shizuku</string>
-    <string name="title_taskmanager_pro">TaskManager Pro</string>
     <string name="pin">Закрепить</string>
     <string name="unpin">Открепить</string>
     <string name="theme_mode">Режим темы</string>
@@ -77,8 +76,6 @@
     <string name="procs_desc">Настройки экрана процессов</string>
     <string name="themes">Темы</string>
     <string name="themes_desc">Внешний вид</string>
-    <string name="pro_version">Pro-версия</string>
-    <string name="pro_version_desc">Разблокировать эксклюзивные функции</string>
     <string name="about">О приложении</string>
     <string name="about_desc">Информация о приложении</string>
 
@@ -91,7 +88,6 @@
     <string name="build_type">Тип сборки</string>
     <string name="community">Сообщество</string>
     <string name="full">Полная</string>
-    <string name="is_pro">Статус Pro</string>
     <string name="yes">Да</string>
     <string name="no">Нет</string>
     <string name="copied_to_clipboard">Скопировано в буфер обмена</string>
@@ -121,7 +117,6 @@
     <string name="what_you_get">ЧТО ВЫ ПОЛУЧИТЕ</string>
     <string name="secure_payment">Безопасная оплата через Google Play</string>
     <string name="task_manager_uppercase">ДИСПЕТЧЕР ЗАДАЧ</string>
-    <string name="pro_version_tagline">Все, что нужно для глубокого понимания работы вашего устройства.</string>
     <string name="one_time_purchase">Разовая покупка</string>
     <string name="purchase_in_progress">Выполняется покупка…</string>
     <string name="permanent_pro_access">Платите один раз — Pro-доступ навсегда.</string>

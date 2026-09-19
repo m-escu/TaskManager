@@ -1,0 +1,10 @@
+# Copy this file to the project root as `signing.properties` and fill in your values
+# to sign release builds with your own keystore. Without it, release builds fall
+# back to the debug keystore (installable, but not for distribution).
+#
+# In GitHub Actions CI, provide /tmp/signing.properties and /tmp/fork.keystore
+# instead (e.g. by decoding base64 secrets in the workflow).
+keyAlias=your_key_alias
+keyPassword=your_key_password
+storePassword=your_store_password
+storeFile=/absolute/path/to/your.keystore

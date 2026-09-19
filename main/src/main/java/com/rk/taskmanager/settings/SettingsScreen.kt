@@ -38,8 +38,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
-import com.rk.bridge.bridge
-
 
 @OptIn(
     ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class,
@@ -106,18 +104,6 @@ fun SettingsScreen(modifier: Modifier = Modifier, navController: NavController) 
             },
             onNavigate = {
                 navController.navigate(SettingsRoutes.Units.route)
-            },
-        )
-
-        PreferenceCategory(
-            label = stringResource(strings.pro_version),
-            description = stringResource(strings.pro_version_desc),
-            startWidget = {
-                Icon(imageVector = Icons.Outlined.Star,null, tint = MaterialTheme.colorScheme.primary)
-            },
-            enabled = bridge != null,
-            onNavigate = {
-                navController.navigate(SettingsRoutes.ProVersion.route)
             },
         )
 

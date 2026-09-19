@@ -25,7 +25,6 @@ import androidx.core.content.pm.PackageInfoCompat
 import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
-import com.rk.bridge.bridge
 import com.rk.components.SettingsToggle
 import com.rk.components.compose.preferences.base.PreferenceGroup
 import com.rk.components.compose.preferences.base.PreferenceLayout
@@ -129,31 +128,7 @@ fun About(modifier: Modifier = Modifier) {
                     Text(text = stringResource(strings.build_type), style = MaterialTheme.typography.titleMedium)
                 },
                 description = {
-                    Text(text = if (bridge == null){
-                        stringResource(strings.community)
-                    }else{
-                        stringResource(strings.full)
-                    }, style = MaterialTheme.typography.titleSmall)
-                },
-            )
-
-
-            PreferenceTemplate(
-                modifier =
-                    Modifier.combinedClickable(
-                        enabled = true,
-                        onClick = {},
-                        onLongClick = { copyToClipboard(context,BuildConfig.GIT_SHORT_COMMIT_HASH) },
-                    ),
-                title = {
-                    Text(text = stringResource(strings.is_pro), style = MaterialTheme.typography.titleMedium)
-                },
-                description = {
-                    Text(text = if (bridge?.isPro()?.value == true){
-                        stringResource(strings.yes)
-                    }else{
-                        stringResource(strings.no)
-                    }, style = MaterialTheme.typography.titleSmall)
+                    Text(text = stringResource(strings.full), style = MaterialTheme.typography.titleSmall)
                 },
             )
 

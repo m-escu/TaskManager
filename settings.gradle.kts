@@ -47,8 +47,4 @@ include(":app")
 include(":components")
 include(":taskmanagerd")
 include(":baselineprofile")
-if (File(rootDir, "taskmanager_pro").exists() && File(rootDir, "taskmanager_pro").isDirectory && File(rootDir, "taskmanager_pro/build.gradle.kts").exists()) {
-    include(":taskmanager_pro")
-}
-include(":bridge")
 include(":main")

@@ -1,18 +1,15 @@
 *.log
 *.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
+.gradle/
 local.properties
-*.log
+.idea/
+.DS_Store
+build/
+/captures
+.externalNativeBuild/
+.cxx/
 
+# Signing material — never commit
+signing.properties
+*.keystore
+*.jks
