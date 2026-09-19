@@ -7,6 +7,14 @@
     <!-- Network accounting only (NetworkStatsManager). This is NOT the
          INTERNET permission: the app still opens no sockets itself. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- PACKAGE_USAGE_STATS is an appop-backed permission: declaring it is
+         what makes the app APPEAR in Settings -> Special app access ->
+         Usage access (the list filters on the manifest declaration). It
+         cannot be granted at install time; it is either self-granted via
+         root (appops) or flipped by the user in that settings page. -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
 
     <application
         android:allowBackup="true"

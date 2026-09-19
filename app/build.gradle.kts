@@ -93,8 +93,8 @@ android {
         targetSdk = 37
 
         //versioning
-        versionCode = 63
-        versionName = "1.6.0-fork4"
+        versionCode = 64
+        versionName = "1.6.0-fork5"
         vectorDrawables {
             useSupportLibrary = true
         }

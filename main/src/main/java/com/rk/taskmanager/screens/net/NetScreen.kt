@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Drawable
 import android.provider.Settings as AndroidSettings
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -69,6 +70,7 @@ val netGraphHandler = GraphDataHandler(seriesCount = 2)
 
 private val NET_PERIOD_DAYS = intArrayOf(1, 7, 30)
 private const val MAX_APP_ROWS = 50
+private const val TAG = "NetScreen"
 
 /** One app (or uid) row of the per-app traffic list. */
 data class AppNetUsage(
@@ -97,15 +99,36 @@ fun hasUsageAccess(context: Context): Boolean {
  * talks to a root daemon, so on rooted devices `su` can grant the usage
  * access appop without the user hunting through settings. Shizuku users get
  * the settings route instead.
+ *
+ * The op is registered under different names depending on Android version
+ * (legacy [PACKAGE_USAGE_STATS] vs namespaced [android:package_usage_stats])
+ * and some su implementations only accept the explicit `cmd appops` form,
+ * so every variant is tried until one actually flips the appop.
  */
 suspend fun grantUsageAccessViaRoot(context: Context): Boolean = withContext(Dispatchers.IO) {
-    try {
-        val process = Runtime.getRuntime()
-            .exec(arrayOf("su", "-c", "appops set ${context.packageName} PACKAGE_USAGE_STATS allow"))
-        process.waitFor() == 0 && hasUsageAccess(context)
-    } catch (_: Exception) {
-        false
+    if (hasUsageAccess(context)) return@withContext true
+    val pkg = context.packageName
+    val commands = listOf(
+        "appops set --user 0 $pkg android:package_usage_stats allow",
+        "appops set $pkg PACKAGE_USAGE_STATS allow",
+        "cmd appops set --user 0 $pkg android:package_usage_stats allow",
+        "cmd appops set $pkg PACKAGE_USAGE_STATS allow",
+    )
+    for (cmd in commands) {
+        try {
+            val process = ProcessBuilder("su", "-c", cmd)
+                .redirectErrorStream(true)
+                .start()
+            val output = process.inputStream.bufferedReader().use { it.readText() }.trim()
+            val exit = process.waitFor()
+            Log.d(TAG, "grantUsageAccess `$cmd` -> exit=$exit output=$output")
+            if (exit == 0 && hasUsageAccess(context)) return@withContext true
+        } catch (e: Exception) {
+            Log.d(TAG, "grantUsageAccess `$cmd` threw: ${e.message}")
+        }
     }
+    // Final re-check in case the appop change propagated asynchronously.
+    hasUsageAccess(context)
 }
 
 /** Aggregates Wi-Fi + mobile + Ethernet buckets per uid; null when access is missing. */

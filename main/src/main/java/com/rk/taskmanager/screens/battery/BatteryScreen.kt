@@ -1,5 +1,6 @@
 package com.rk.taskmanager.screens.battery
 
+import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -100,6 +101,7 @@ private fun JSONObject.toSample(timestamp: Long): BatterySampleEntity? {
 
 private val HISTORY_RETENTION_MS = 30L * 24 * 3600 * 1000
 private val HISTORY_PERIODS_DAYS = intArrayOf(1, 7, 30)
+private const val TAG = "BatteryScreen"
 
 /**
  * Battery screen (fork decision #4): live stats from the daemon's
@@ -144,22 +146,36 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    // History query + chart seeding for the selected period.
-    LaunchedEffect(periodDays) {
+    // History query + chart seeding for the selected period. Re-runs when
+    // sampleCount changes so the chart fills in as soon as the first sample
+    // is recorded. Vico 2.0.3 throws IllegalArgumentException ("Series can't
+    // be empty.") when a transaction contains an empty series — which is
+    // exactly the state of a fresh database, so empty results are skipped
+    // and the transactions are additionally guarded below.
+    LaunchedEffect(periodDays, sampleCount) {
         val dao = TaskManager.getBatteryDatabase(context).batterySampleDao()
         val since = System.currentTimeMillis() - periodDays * 24L * 3600 * 1000
         val samples = withContext(Dispatchers.IO) { dao.since(since) }
         historyPoints = samples.size
-        capacityProducer.runTransaction {
-            lineSeries {
-                series(x = samples.indices.toList(), y = samples.map { it.capacity })
+        if (samples.isEmpty()) return@LaunchedEffect
+        runCatching {
+            capacityProducer.runTransaction {
+                lineSeries {
+                    series(x = samples.indices.toList(), y = samples.map { it.capacity })
+                }
             }
-        }
-        currentProducer.runTransaction {
-            lineSeries {
-                series(x = samples.indices.toList(), y = samples.map { abs(it.currentUA / 1000f) })
+            currentProducer.runTransaction {
+                lineSeries {
+                    series(
+                        x = samples.indices.toList(),
+                        // -1 means "unknown" — plot 0 instead of |−1| mA.
+                        y = samples.map {
+                            if (it.currentUA < 0) 0f else abs(it.currentUA / 1000f)
+                        },
+                    )
+                }
             }
-        }
+        }.onFailure { Log.e(TAG, "chart seeding failed", it) }
     }
 
     Column(modifier.verticalScroll(rememberScrollState())) {
