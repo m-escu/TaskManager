@@ -31,6 +31,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -45,9 +46,9 @@ import com.rk.taskmanager.R
 import com.rk.taskmanager.MainActivity
 import com.rk.taskmanager.ProcessViewModel
 import com.rk.taskmanager.components.ProcessSearchBar
+import com.rk.taskmanager.daemon.DaemonClient
 import com.rk.taskmanager.daemon.DaemonResult
 import com.rk.taskmanager.daemon.daemonProtocolVersion
-import com.rk.taskmanager.daemon.isLegacyDaemon
 import com.rk.taskmanager.daemon.isConnected
 import com.rk.taskmanager.daemon.startDaemon
 import com.rk.taskmanager.screens.gpu.GpuViewModel
@@ -177,7 +178,7 @@ fun MainScreen(modifier: Modifier = Modifier, navController: NavController, view
                 // A v1 daemon can only appear when a stale daemon binary was
                 // left running by an older app version. Warn instead of
                 // failing silently later.
-                if (isLegacyDaemon && !legacyBannerDismissed) {
+                if (DaemonClient.isLegacyDaemon && !legacyBannerDismissed) {
                     LegacyDaemonBanner(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
