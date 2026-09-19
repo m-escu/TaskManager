@@ -98,8 +98,8 @@ private fun JSONObject.toSample(timestamp: Long): BatterySampleEntity? {
     )
 }
 
-private const val HISTORY_RETENTION_MS = 30L * 24 * 3600 * 1000
-private const val HISTORY_PERIODS_DAYS = intArrayOf(1, 7, 30)
+private val HISTORY_RETENTION_MS = 30L * 24 * 3600 * 1000
+private val HISTORY_PERIODS_DAYS = intArrayOf(1, 7, 30)
 
 /**
  * Battery screen (fork decision #4): live stats from the daemon's
