@@ -92,4 +92,18 @@
     <string name="legacy_daemon_title">Eski sürüm daemon algılandı</string>
     <string name="legacy_daemon_msg">Çalışan daemon eski bir protokol kullanıyor (v%1$d). Bazı özellikler kullanılamaz. Güncellemek için uygulamayı tamamen kapatıp daemonı yeniden başlatın.</string>
 
+    <string name="show_cpu_time">CPU süresini göster</string>
+    <string name="show_cpu_time_desc">İşlem satırları anlık yüzde yerine birikimli işlemci süresini gösterir</string>
+    <string name="cpu_time">CPU süresi</string>
+    <string name="sort_by_tree">İşlem ağacı</string>
+    <string name="sort_by_tree_desc">Alt işlemler ebeveynlerinin altında listelenir</string>
+    <string name="pss_details">Bellek ayrıntıları (PSS)</string>
+    <string name="pss_total">Orantılı bellek boyutu (PSS)</string>
+    <string name="pss_anon">PSS anonim bellek</string>
+    <string name="pss_file">PSS dosya belleği</string>
+    <string name="pss_swap">PSS takas belleği</string>
+    <string name="pss_private">Özel (kirli+temiz)</string>
+    <string name="pss_unavailable">Bu işlem için PSS kullanılamıyor (eski çekirdek veya işlem sonlanmış)</string>
+    <string name="per_core_usage">Çekirdek başına kullanım</string>
+    <string name="core_offline">çevrimdışı</string>
 </resources>

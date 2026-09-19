@@ -74,6 +74,7 @@ import com.rk.components.compose.preferences.base.PreferenceTemplate
 import com.rk.taskmanager.ProcessUiModel
 import com.rk.taskmanager.ProcessViewModel
 import com.rk.taskmanager.TaskManager
+import com.rk.taskmanager.daemon.DaemonClient
 import com.rk.taskmanager.daemon.DaemonServer
 import com.rk.taskmanager.daemon.KillAction
 import com.rk.commons.getString
@@ -91,6 +92,7 @@ import java.io.InputStreamReader
 import java.lang.ref.WeakReference
 import java.text.DateFormat
 import java.util.Date
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
@@ -115,6 +117,35 @@ fun startTimeToMillis(startTimeTicks: Long): Long {
 
 fun sysconf(): Long {
     return Os.sysconf(OsConstants._SC_CLK_TCK)
+}
+
+/**
+ * Formats raw CPU ticks (utime+stime from /proc/<pid>/stat) as cumulative
+ * processor time. Independent of wall time: a multi-threaded process can
+ * easily accumulate more CPU seconds than it has been alive.
+ */fun formatCpuTicks(ticks: Long): String {
+    if (ticks <= 0) return "\u2014"
+    val ticksPerSecond = try {
+        sysconf()
+    } catch (_: Exception) {
+        100L
+    }
+    val totalSeconds = ticks / ticksPerSecond
+    val h = totalSeconds / 3600
+    val m = (totalSeconds % 3600) / 60
+    val s = totalSeconds % 60
+    return if (h > 0) String.format(Locale.ENGLISH, "%d:%02d:%02d", h, m, s)
+    else String.format(Locale.ENGLISH, "%02d:%02d", m, s)
+}
+
+/** Human-readable size for KB values coming from /proc (RSS, PSS, ...). */
+fun formatSizeKb(kb: Long): String {
+    return if (kb >= 1000) {
+        val mb = kb / 1024f
+        String.format(Locale.US, "%.2f MB", mb)
+    } else {
+        "$kb KB"
+    }
 }
 
 fun isAppInstalled(context: Context, packageName: String): Boolean {
@@ -370,29 +401,25 @@ fun ProcessInfo(
                             cpuUsage.intValue
                         }).toString() + "% (${strings.estimated.getString()})"
                     )
+
+                    TextCard(
+                        text = stringResource(strings.cpu_time),
+                        description = formatCpuTicks(proc!!.proc.cpuTimeTicks)
+                    )
                     TextCard(
                         text = stringResource(strings.is_foreground),
                         description = proc!!.proc.isForeground.toString()
                     )
 
-                    fun formatSize(kb: Long): String {
-                        return if (kb >= 1000) {
-                            val mb = kb / 1024f
-                            String.format(java.util.Locale.US, "%.2f MB", mb)
-                        } else {
-                            "$kb KB"
-                        }
-                    }
-
                     TextCard(
                         text = stringResource(strings.ram_usage),
-                        description = formatSize(proc!!.proc.memoryUsageKb)
+                        description = formatSizeKb(proc!!.proc.memoryUsageKb)
                     )
 
                     if (proc!!.proc.residentSetSizeKb != proc!!.proc.memoryUsageKb) {
                         TextCard(
                             text = stringResource(strings.actual_ram_usage),
-                            description = formatSize(proc!!.proc.residentSetSizeKb)
+                            description = formatSizeKb(proc!!.proc.residentSetSizeKb)
                         )
                     }
 
@@ -521,6 +548,53 @@ fun ProcessInfo(
                 }
 
 
+                // PSS breakdown (fork decision: PSS/RSS toggle target). Polled
+                // via the typed DaemonClient: responses are matched by request
+                // id, and daemons without the pss_ping cap (ERROR answer or
+                // missing field) degrade to an "unavailable" row set.
+                val pssState = remember(proc!!.proc.pid) { mutableStateOf<PssState>(PssState.Loading) }
+
+                LaunchedEffect(proc!!.proc.pid) {
+                    while (isActive) {
+                        val response = DaemonClient.pss(proc.proc.pid, timeoutMs = 2_000)
+                        pssState.value = when {
+                            response == null -> PssState.Unavailable
+                            response.optBoolean("available", false) -> PssState.Ready(
+                                pssKb = response.optLong("pssKb", -1),
+                                anonKb = response.optLong("pssAnonKb", -1),
+                                fileKb = response.optLong("pssFileKb", -1),
+                                swapKb = response.optLong("swapPssKb", -1),
+                                privateKb = response.optLong("privateKb", -1),
+                            )
+                            else -> PssState.Unavailable
+                        }
+                        delay(3_000)
+                    }
+                }
+
+                PreferenceGroup(heading = stringResource(strings.pss_details)) {
+                    when (val state = pssState.value) {
+                        PssState.Loading -> TextCard(
+                            text = stringResource(strings.pss_total),
+                            description = stringResource(strings.loading)
+                        )
+                        PssState.Unavailable -> TextCard(
+                            text = stringResource(strings.pss_unavailable),
+                            description = null,
+                            selection = true,
+                            copyDesOnLong = false
+                        )
+                        is PssState.Ready -> {
+                            TextCard(text = stringResource(strings.pss_total), description = formatSizeKb(state.pssKb))
+                            if (state.anonKb >= 0) TextCard(text = stringResource(strings.pss_anon), description = formatSizeKb(state.anonKb))
+                            if (state.fileKb >= 0) TextCard(text = stringResource(strings.pss_file), description = formatSizeKb(state.fileKb))
+                            if (state.swapKb >= 0) TextCard(text = stringResource(strings.pss_swap), description = formatSizeKb(state.swapKb))
+                            if (state.privateKb >= 0) TextCard(text = stringResource(strings.pss_private), description = formatSizeKb(state.privateKb))
+                        }
+                    }
+                }
+
+
                 if (proc?.isApp == true) {
                     val descriptionState by produceState<DescriptionState>(initialValue = DescriptionState.Loading, key1 = proc?.proc?.cmdLine) {
                         val db = TaskManager.getDatabase(TaskManager.requireContext())
@@ -595,4 +669,17 @@ sealed class DescriptionState {
     object Loading : DescriptionState()
     data class Success(val text: String) : DescriptionState()
     object Empty : DescriptionState()
+}
+
+/** PSS polling state for the ProcessInfo memory-details group. */
+sealed class PssState {
+    data object Loading : PssState()
+    data object Unavailable : PssState()
+    data class Ready(
+        val pssKb: Long,
+        val anonKb: Long,
+        val fileKb: Long,
+        val swapKb: Long,
+        val privateKb: Long,
+    ) : PssState()
 }

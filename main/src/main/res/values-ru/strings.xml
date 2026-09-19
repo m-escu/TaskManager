@@ -217,4 +217,18 @@
     <string name="legacy_daemon_title">Обнаружен устаревший демон</string>
     <string name="legacy_daemon_msg">Запущенный демон использует старый протокол (v%1$d). Некоторые функции недоступны. Полностью закройте приложение и запустите демон заново, чтобы обновить его.</string>
 
+    <string name="show_cpu_time">Показывать время ЦП</string>
+    <string name="show_cpu_time_desc">Строки процессов показывают суммарное время процессора вместо мгновенного процента</string>
+    <string name="cpu_time">Время ЦП</string>
+    <string name="sort_by_tree">Дерево процессов</string>
+    <string name="sort_by_tree_desc">Потомки перечислены под родителем</string>
+    <string name="pss_details">Подробности памяти (PSS)</string>
+    <string name="pss_total">Пропорциональный размер (PSS)</string>
+    <string name="pss_anon">PSS анонимная память</string>
+    <string name="pss_file">PSS файловая память</string>
+    <string name="pss_swap">PSS в swap</string>
+    <string name="pss_private">Частная (dirty+clean)</string>
+    <string name="pss_unavailable">PSS недоступен для этого процесса (старое ядро или процесс завершён)</string>
+    <string name="per_core_usage">По ядрам</string>
+    <string name="core_offline">не в сети</string>
 </resources>

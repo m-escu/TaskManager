@@ -227,4 +227,18 @@
     <string name="daemon_caps">支持的能力</string>
     <string name="legacy_daemon_title">检测到旧版守护进程</string>
     <string name="legacy_daemon_msg">正在运行的守护进程使用旧协议（v%1$d），部分功能不可用。请完全关闭应用并重新启动守护进程以更新。</string>
+    <string name="show_cpu_time">显示 CPU 时间</string>
+    <string name="show_cpu_time_desc">进程行显示累计处理器时间，而非即时使用率百分比</string>
+    <string name="cpu_time">CPU 时间</string>
+    <string name="sort_by_tree">进程树</string>
+    <string name="sort_by_tree_desc">子进程列在父进程之下</string>
+    <string name="pss_details">内存详情（PSS）</string>
+    <string name="pss_total">按比例分摊内存（PSS）</string>
+    <string name="pss_anon">PSS 匿名内存</string>
+    <string name="pss_file">PSS 文件映射内存</string>
+    <string name="pss_swap">PSS 已换出内存</string>
+    <string name="pss_private">私有内存（脏+净）</string>
+    <string name="pss_unavailable">该进程的 PSS 不可用（内核过旧或进程已退出）</string>
+    <string name="per_core_usage">每核使用率</string>
+    <string name="core_offline">离线</string>
 </resources>

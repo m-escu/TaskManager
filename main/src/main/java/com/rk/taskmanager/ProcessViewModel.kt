@@ -54,7 +54,7 @@ class ProcessViewModel : ViewModel() {
 
     enum class Sortby(val id: Int){
         //edit default value in settings.kt of 0
-        Ram(0),Cpu(1),A_z(2)
+        Ram(0),Cpu(1),A_z(2),Tree(3)
     }
     private val _sortBy = MutableStateFlow(Settings.sortby)
 
@@ -64,6 +64,13 @@ class ProcessViewModel : ViewModel() {
     val sortBy = _sortBy.asStateFlow()
     private val _threadCount = MutableStateFlow(0)
     val threadCount = _threadCount.asStateFlow()
+
+    /**
+     * Indentation depth per pid, only populated when sorting by [Sortby.Tree].
+     * Children render indented under their parent (fork decision: process tree).
+     */
+    private val _treeDepths = MutableStateFlow<Map<Int, Int>>(emptyMap())
+    val treeDepths = _treeDepths.asStateFlow()
 
     private val _procCount = MutableStateFlow(0)
     val procCount = _procCount.asStateFlow()
@@ -89,7 +96,16 @@ class ProcessViewModel : ViewModel() {
             Sortby.Ram.id -> filtered.sortedByDescending { it.proc.memoryUsageKb }
             Sortby.Cpu.id -> filtered.sortedByDescending { it.proc.cpuUsage }
             Sortby.A_z.id -> filtered.sortedBy { it.name.lowercase() }
+            Sortby.Tree.id -> {
+                val (ordered, depths) = buildTree(filtered)
+                _treeDepths.value = depths
+                ordered
+            }
             else -> filtered
+        }
+
+        if (sortBy != Sortby.Tree.id) {
+            _treeDepths.value = emptyMap()
         }
 
         sorted.sortedByDescending { it.isPinned.value }
@@ -162,6 +178,31 @@ class ProcessViewModel : ViewModel() {
     val uiProcesses = _uiProcesses.asStateFlow()
     var isLoading = mutableStateOf(true)
 
+    /**
+     * Depth-first walk of the process forest: children directly follow their
+     * parent, siblings alphabetical. Processes whose parent is not visible
+     * (filtered out, dead, or pid 1 itself) become roots. Recursion is safe:
+     * parent chains on Android are shallow (init -> zygote -> app).
+     */
+    private fun buildTree(processes: List<ProcessUiModel>): Pair<List<ProcessUiModel>, Map<Int, Int>> {
+        val byPid = processes.associateBy { it.proc.pid }
+        val children = HashMap<Int, MutableList<ProcessUiModel>>()
+        val roots = mutableListOf<ProcessUiModel>()
+        for (p in processes) {
+            val parent = if (p.proc.pid == p.proc.parentPid) null else byPid[p.proc.parentPid]
+            if (parent == null) roots.add(p) else children.getOrPut(parent.proc.pid) { mutableListOf() }.add(p)
+        }
+        val out = ArrayList<ProcessUiModel>(processes.size)
+        val depths = HashMap<Int, Int>(processes.size)
+        fun dfs(node: ProcessUiModel, depth: Int) {
+            out.add(node)
+            depths[node.proc.pid] = depth
+            children[node.proc.pid]?.sortedBy { it.name.lowercase() }?.forEach { dfs(it, depth + 1) }
+        }
+        roots.sortedBy { it.proc.pid }.forEach { dfs(it, 0) }
+        return out to depths
+    }
+
     data class Process(
         val name: String,
         var nice: Int,
@@ -179,7 +220,9 @@ class ProcessViewModel : ViewModel() {
         val residentSetSizeKb: Long,
         val virtualMemoryKb: Long,
         val cgroup: String,
-        val executablePath: String
+        val executablePath: String,
+        /** Raw utime+stime in clock ticks; requires the proc_cpu_time daemon cap. */
+        val cpuTimeTicks: Long = 0L,
     )
 
     private val appInfoCache = ConcurrentHashMap<String, AppInfoCache>()
@@ -227,7 +270,8 @@ class ProcessViewModel : ViewModel() {
                                     residentSetSizeKb = obj.optLong("residentSetSizeKb", 0L),
                                     virtualMemoryKb = obj.optLong("virtualMemoryKb", 0L),
                                     cgroup = obj.optString("cgroup", ""),
-                                    executablePath = obj.optString("executablePath", "")
+                                    executablePath = obj.optString("executablePath", ""),
+                                    cpuTimeTicks = obj.optLong("cpuTimeTicks", 0L)
                                 )
                             )
                         }

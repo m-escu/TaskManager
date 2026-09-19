@@ -248,4 +248,18 @@
     <string name="legacy_daemon_title">Legacy daemon detected</string>
     <string name="legacy_daemon_msg">The running daemon speaks an older protocol (v%1$d). Some features are unavailable. Fully close the app and start the daemon again to update it.</string>
 
+    <string name="show_cpu_time">Show CPU time</string>
+    <string name="show_cpu_time_desc">Process rows show cumulative processor time instead of instantaneous usage percentage</string>
+    <string name="cpu_time">CPU time</string>
+    <string name="sort_by_tree">Process tree</string>
+    <string name="sort_by_tree_desc">Children listed under their parent</string>
+    <string name="pss_details">Memory details (PSS)</string>
+    <string name="pss_total">Proportional set size</string>
+    <string name="pss_anon">PSS anonymous memory</string>
+    <string name="pss_file">PSS file-backed memory</string>
+    <string name="pss_swap">PSS swapped memory</string>
+    <string name="pss_private">Private (dirty+clean)</string>
+    <string name="pss_unavailable">PSS is unavailable for this process (old kernel or process gone)</string>
+    <string name="per_core_usage">Per-core usage</string>
+    <string name="core_offline">offline</string>
 </resources>

@@ -39,6 +39,9 @@ fun ProcSettings(modifier: Modifier = Modifier) {
                 , showSwitch = true, sideEffect = {
                 Settings.procAutoRefresh = it
             })
+            SettingsToggle(label = stringResource(strings.show_cpu_time), description = stringResource(strings.show_cpu_time_desc), default = Settings.showCpuTime, showSwitch = true, sideEffect = {
+                Settings.showCpuTime = it
+            })
         }
 
         KillBehaviorSettings()

@@ -31,6 +31,13 @@ object Settings {
     /** Grace period (ms) after SIGTERM before the daemon escalates to SIGKILL. Daemon clamps to 200..10000. */
     var killGraceMs by IntPref(key = "kill_grace_ms", default = 3000)
 
+    /**
+     * Process list rows show cumulative CPU time (from cpuTimeTicks, only
+     * valid when the daemon advertises the proc_cpu_time cap) instead of the
+     * instantaneous windowed CPU percentage.
+     */
+    var showCpuTime by BooleanPref(key = "show_cpu_time", default = false)
+
     var pinnedProcesses: Set<String>
         get() = Preference.getString("pinned_processes", "").split(",").filter { it.isNotEmpty() }.toSet()
         set(value) = Preference.setString("pinned_processes", value.joinToString(","))

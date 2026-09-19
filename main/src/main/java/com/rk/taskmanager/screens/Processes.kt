@@ -179,6 +179,14 @@ fun Processes(
                     viewModel.setSortBy(ProcessViewModel.Sortby.A_z)
                 })
 
+                SettingsToggle(default = false, showSwitch = false, startWidget = {
+                    RadioButton(selected = sortBy == ProcessViewModel.Sortby.Tree.id, onClick = {
+                        viewModel.setSortBy(ProcessViewModel.Sortby.Tree)
+                    })
+                }, label = stringResource(strings.sort_by_tree), description = stringResource(strings.sort_by_tree_desc), sideEffect = {
+                    viewModel.setSortBy(ProcessViewModel.Sortby.Tree)
+                })
+
 
 
             }
@@ -206,7 +214,6 @@ fun Processes(
                     items(filteredProcesses, key = { it.proc.pid }) { uiProc ->
                         ProcessItem(modifier, uiProc, navController = navController, viewModel)
                     }
-
                     item {
                         Spacer(modifier = Modifier.padding(bottom = 32.dp))
                     }
@@ -261,9 +268,13 @@ fun ProcessItem(
 ) {
     var showKillDialog by remember { mutableStateOf<ProcessUiModel?>(null) }
 
+    // Tree mode indents children under their parent; other sorts have no depth.
+    val depth = viewModel.treeDepths.collectAsState().value[uiProc.proc.pid] ?: 0
+    val rowIndent = (8 + depth * 14).dp
+
     PreferenceTemplate(
         modifier = modifier
-            .padding(8.dp)
+            .padding(start = rowIndent, top = 8.dp, end = 8.dp, bottom = 8.dp)
             .clip(RoundedCornerShape(16.dp))
             .combinedClickable(
                 indication = ripple(),
@@ -339,9 +350,11 @@ fun ProcessItem(
                     Spacer(modifier = Modifier.width(2.dp))
 
                     Text(
-                        text = "${
-                            String.format(Locale.ENGLISH, "%.1f", uiProc.proc.cpuUsage)
-                        }%",
+                        text = if (Settings.showCpuTime) {
+                            formatCpuTicks(uiProc.proc.cpuTimeTicks)
+                        } else {
+                            String.format(Locale.ENGLISH, "%.1f", uiProc.proc.cpuUsage) + "%"
+                        },
                         style = MaterialTheme.typography.bodySmall
                     )
                 }

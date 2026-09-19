@@ -228,4 +228,18 @@
     <string name="legacy_daemon_title">Daemon antigo detectado</string>
     <string name="legacy_daemon_msg">O daemon em execução usa um protocolo antigo (v%1$d). Alguns recursos ficam indisponíveis. Feche totalmente o aplicativo e inicie o daemon novamente para atualizá-lo.</string>
 
+    <string name="show_cpu_time">Mostrar tempo de CPU</string>
+    <string name="show_cpu_time_desc">As linhas de processo mostram tempo de processador acumulado em vez de percentual instantâneo</string>
+    <string name="cpu_time">Tempo de CPU</string>
+    <string name="sort_by_tree">Árvore de processos</string>
+    <string name="sort_by_tree_desc">Processos filhos listados sob o pai</string>
+    <string name="pss_details">Detalhes de memória (PSS)</string>
+    <string name="pss_total">Tamanho proporcional (PSS)</string>
+    <string name="pss_anon">PSS memória anônima</string>
+    <string name="pss_file">PSS memória de arquivos</string>
+    <string name="pss_swap">PSS memória em swap</string>
+    <string name="pss_private">Privada (dirty+clean)</string>
+    <string name="pss_unavailable">PSS indisponível para este processo (kernel antigo ou processo encerrado)</string>
+    <string name="per_core_usage">Uso por núcleo</string>
+    <string name="core_offline">offline</string>
 </resources>
