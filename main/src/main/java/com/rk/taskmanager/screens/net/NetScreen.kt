@@ -1,13 +1,12 @@
 package com.rk.taskmanager.screens.net
 
 import android.app.AppOpsManager
+import android.app.usage.NetworkStats
+import android.app.usage.NetworkStatsManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Drawable
-import android.net.NetworkStats
-import android.net.NetworkStatsManager
-import android.net.NetworkTemplate
-import android.provider.Settings
+import android.provider.Settings as AndroidSettings
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -115,32 +114,47 @@ suspend fun queryPerAppUsage(
     sinceMs: Long,
 ): Map<Int, LongArray>? = withContext(Dispatchers.IO) {
     if (!hasUsageAccess(context)) return@withContext null
-    val nsm = context.getSystemService(NetworkStatsManager::class.java)
+    val nsm = context.getSystemService(Context.NETWORK_STATS_SERVICE) as? NetworkStatsManager
         ?: return@withContext null
     val end = System.currentTimeMillis()
     val perUid = HashMap<Int, LongArray>(256)
-    // The static template builders are deprecated on newer APIs but remain the
-    // only version-spanning way (26..36) to express these match rules.
-    val templates = listOf(
-        NetworkTemplate.buildTemplateWifi(),
-        NetworkTemplate.buildTemplateMobile(),
-        NetworkTemplate.buildTemplateEthernet(),
-    )
-    for (template in templates) {
-        try {
-            val stats = nsm.querySummary(template, sinceMs, end)
-            val bucket = NetworkStats.Bucket()
-            while (stats.hasNextBucket()) {
-                stats.getNextBucket(bucket)
-                if (bucket.rxBytes <= 0 && bucket.txBytes <= 0) continue
-                val agg = perUid.getOrPut(bucket.uid) { LongArray(2) }
-                agg[0] += bucket.rxBytes
-                agg[1] += bucket.txBytes
+
+    // NetworkTemplate is not part of the public SDK stubs on every compile
+    // version, so the standard templates + querySummary are invoked
+    // reflectively. The static builders exist since API 9-ish (Ethernet since
+    // 26 = our minSdk), so this is runtime-safe across 26..36+.
+    try {
+        val templateClass = Class.forName("android.net.NetworkTemplate")
+        val builders = listOf(
+            templateClass.getMethod("buildTemplateWifi"),
+            templateClass.getMethod("buildTemplateMobile"),
+            templateClass.getMethod("buildTemplateEthernet"),
+        )
+        val querySummary = nsm.javaClass.getMethod(
+            "querySummary",
+            templateClass,
+            Long::class.javaPrimitiveType,
+            Long::class.javaPrimitiveType,
+        )
+        for (builder in builders) {
+            try {
+                val template = builder.invoke(null)
+                val stats = querySummary.invoke(nsm, template, sinceMs, end) as NetworkStats
+                val bucket = NetworkStats.Bucket()
+                while (stats.hasNextBucket()) {
+                    stats.getNextBucket(bucket)
+                    if (bucket.rxBytes <= 0 && bucket.txBytes <= 0) continue
+                    val agg = perUid.getOrPut(bucket.uid) { LongArray(2) }
+                    agg[0] += bucket.rxBytes
+                    agg[1] += bucket.txBytes
+                }
+                stats.close()
+            } catch (_: Exception) {
+                // This transport may not exist on the device — the others still count.
             }
-            stats.close()
-        } catch (_: Exception) {
-            // This transport may not exist on the device — the others still count.
         }
+    } catch (_: Exception) {
+        // Network accounting unavailable on this build.
     }
     perUid
 }
@@ -324,7 +338,7 @@ fun NetScreen(modifier: Modifier = Modifier) {
                             TextButton(onClick = {
                                 try {
                                     context.startActivity(
-                                        Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                                        Intent(AndroidSettings.ACTION_USAGE_ACCESS_SETTINGS)
                                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                     )
                                 } catch (_: Exception) {
