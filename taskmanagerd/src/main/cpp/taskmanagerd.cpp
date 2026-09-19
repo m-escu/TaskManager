@@ -18,6 +18,16 @@
 //   - Per-process CPU usage is windowed (delta of utime+stime between
 //     successive samples). The first time a pid is seen, the lifetime
 //     average is reported as a fallback (same as protocol v1 behaviour).
+//   - KILL_GRACEFUL sends SIGTERM and escalates to SIGKILL in the background
+//     if the process is still alive after the grace period (default 3000ms).
+//     The response reports signal delivery immediately (never blocks the
+//     command loop); the escalation worker emits no further messages.
+//   - CORE_PING reports per-core usage + frequencies. BATTERY_PING reads
+//     /sys/class/power_supply with vendor unit heuristics. PSS_PING reads
+//     /proc/<pid>/smaps_rollup. SUBSCRIBE/UNSUBSCRIBE push selected topics
+//     (cpu/battery/mem/net) on a timer from a dedicated thread.
+//   - Unknown commands and malformed JSON answer {"type":"ERROR",...}
+//     instead of staying silent, so clients can fail fast.
 
 #include <cerrno>
 #include <csignal>
@@ -36,6 +46,7 @@
 #include <atomic>
 #include <chrono>
 #include <cctype>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -67,6 +78,11 @@ static json daemonCaps() {
         "windowed_proc_cpu",    // per-process CPU is a windowed delta, not lifetime average
         "nonblocking_cpu_ping", // CPU_PING answered from a sampler thread
         "proc_cpu_time",        // processes expose raw cpuTimeTicks
+        "kill_graceful",        // KILL_GRACEFUL: SIGTERM + background SIGKILL escalation
+        "core_ping",            // CORE_PING: per-core usage + frequencies
+        "battery_ping",         // BATTERY_PING: battery stats with unit heuristics
+        "pss_ping",             // PSS_PING: PSS via /proc/<pid>/smaps_rollup
+        "push_subscribe",       // SUBSCRIBE/UNSUBSCRIBE push mode
     });
 }
 
@@ -241,26 +257,58 @@ struct CpuStat {
     long active() const { return total() - idle; }
 };
 
+// Parses the 8 counter fields after a "cpu" label. Returns false if fewer
+// than 8 fields were present.
+static bool parseCpuFields(const std::string& line, CpuStat& out) {
+    std::istringstream iss(line);
+    std::string cpuLabel;
+    long v[8] = {0};
+    iss >> cpuLabel;
+    for (int i = 0; i < 8; ++i) if (!(iss >> v[i])) return false;
+    out = {v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7]};
+    return true;
+}
+
 CpuStat readCpuStat() {
     std::ifstream file("/proc/stat");
     if (!file.is_open()) return {};
     std::string line;
     std::getline(file, line);
-    if (line.rfind("cpu ", 0) == 0) {
-        std::istringstream iss(line);
-        std::string cpuLabel;
-        long v[8] = {0};
-        iss >> cpuLabel;
-        for (int i = 0; i < 8; ++i) if (!(iss >> v[i])) break;
-        return {v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7]};
-    }
+    CpuStat out;
+    if (line.rfind("cpu ", 0) == 0 && parseCpuFields(line, out)) return out;
     return {};
 }
 
 static std::atomic<int> g_cpuUsage{-1}; // -1 = no sample yet
 
+// Per-core usage (0..100), maintained by the sampler on the same 100ms
+// window as the aggregate. Static storage zero-initializes the atomics.
+static constexpr int MAX_CORES = 64;
+static std::atomic<int> g_coreUsage[MAX_CORES];
+static std::atomic<int> g_coreCount{0};
+
+// Reads every "cpuN" line of /proc/stat. Returns false if the file is
+// unreadable (aggregate line missing is tolerated for core-less hosts).
+static bool readPerCoreStat(std::vector<CpuStat>& cores) {
+    std::ifstream file("/proc/stat");
+    if (!file.is_open()) return false;
+    std::string line;
+    cores.clear();
+    while (std::getline(file, line)) {
+        if (line.rfind("cpu", 0) != 0 || line.size() < 4) continue;
+        if (!std::isdigit(static_cast<unsigned char>(line[3]))) continue;
+        CpuStat c;
+        if (parseCpuFields(line, c)) cores.push_back(c);
+    }
+    return true;
+}
+
 void cpuSamplerLoop() {
     CpuStat prev = readCpuStat();
+    std::vector<CpuStat> prevCores;
+    std::vector<CpuStat> currCores;
+    readPerCoreStat(prevCores);
+    g_coreCount.store((int)prevCores.size());
     while (keep_running.load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         if (!keep_running.load()) break;
@@ -272,6 +320,20 @@ void cpuSamplerLoop() {
             g_cpuUsage.store(std::clamp((int)usage, 0, 100));
         }
         prev = curr;
+
+        if (readPerCoreStat(currCores)) {
+            size_t n = std::min(prevCores.size(), currCores.size());
+            for (size_t i = 0; i < n && i < MAX_CORES; ++i) {
+                long dTotal = currCores[i].total() - prevCores[i].total();
+                long dActive = currCores[i].active() - prevCores[i].active();
+                if (dTotal > 0) {
+                    double u = (double)dActive / (double)dTotal * 100.0;
+                    g_coreUsage[i].store(std::clamp((int)u, 0, 100));
+                }
+            }
+            g_coreCount.store((int)currCores.size());
+            prevCores = currCores;
+        }
     }
 }
 
@@ -315,6 +377,57 @@ static void pruneProcCpuSamples(const std::vector<int>& livePids) {
     for (auto it = g_procCpuSamples.begin(); it != g_procCpuSamples.end();) {
         if (live.count(it->first) == 0) it = g_procCpuSamples.erase(it);
         else ++it;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Graceful kill: deliver SIGTERM now, escalate to SIGKILL in the background
+// if the process outlives the grace period. The worker is detached and must
+// therefore only use raw syscalls (no iostream/globals) so it is safe even
+// if it is still sleeping when the daemon exits. Identity of the victim is
+// tracked via its /proc/<pid>/stat starttime so a recycled pid is never
+// signalled by mistake.
+// ---------------------------------------------------------------------------
+
+// Reads field 22 (starttime) of /proc/<pid>/stat with plain open/read.
+// Returns -1 when the process is gone or the file is unreadable.
+static long readStarttimeRaw(int pid) {
+    char path[64];
+    snprintf(path, sizeof(path), "/proc/%d/stat", pid);
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) return -1;
+    char buf[512];
+    ssize_t n = read(fd, buf, sizeof(buf) - 1);
+    close(fd);
+    if (n <= 0) return -1;
+    buf[n] = '\0';
+    char* p = strrchr(buf, ')');
+    if (!p || p[1] != ' ') return -1;
+    // Fields after ") ": state(1) pgrp(2) ... starttime(19)
+    long starttime = -1;
+    int tok = 0;
+    char* save = nullptr;
+    for (char* t = strtok_r(p + 2, " ", &save); t != nullptr; t = strtok_r(nullptr, " ", &save)) {
+        if (++tok == 19) { starttime = atol(t); break; }
+    }
+    return starttime;
+}
+
+static void gracefulKillWorker(int pid, int timeoutMs, long expectedStarttime) {
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (kill(pid, 0) != 0) return;          // gone
+        long st = readStarttimeRaw(pid);
+        if (st == -1) return;                   // gone
+        if (expectedStarttime != -1 && st != expectedStarttime) return; // pid reused
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    // Re-verify identity right before escalating.
+    if (kill(pid, 0) == 0) {
+        long st = readStarttimeRaw(pid);
+        if (st != -1 && (expectedStarttime == -1 || st == expectedStarttime)) {
+            kill(pid, SIGKILL);
+        }
     }
 }
 
@@ -648,6 +761,310 @@ struct NetStatSnapshot {
 
 static std::unordered_map<std::string, NetStatSnapshot> netStatCache;
 
+// ---------------------------------------------------------------------------
+// Feature builders for the Phase-2 commands (CORE_PING, BATTERY_PING, PSS_PING,
+// SUBSCRIBE push payloads).
+// ---------------------------------------------------------------------------
+
+static long readFileLong(const std::string& path, long def) {
+    std::ifstream f(path);
+    long v = def;
+    if (f.is_open() && (f >> v)) return v;
+    return def;
+}
+
+static std::string readFileTrimmed(const std::string& path) {
+    std::ifstream f(path);
+    std::string s;
+    if (f.is_open() && std::getline(f, s)) {
+        size_t a = s.find_first_not_of(" \t\r\n");
+        size_t b = s.find_last_not_of(" \t\r\n");
+        if (a != std::string::npos) return s.substr(a, b - a + 1);
+    }
+    return "";
+}
+
+// Per-core snapshot: usage from the sampler's atomics, frequencies from
+// cpufreq sysfs read on demand. Unknown values are reported as -1.
+static json buildCoresJson() {
+    json arr = json::array();
+    int n = std::min(g_coreCount.load(), MAX_CORES);
+    for (int i = 0; i < n; ++i) {
+        std::string cpufreq = "/sys/devices/system/cpu/cpu" + std::to_string(i) + "/cpufreq/";
+        long cur = readFileLong(cpufreq + "scaling_cur_freq", -1);
+        long mn = readFileLong(cpufreq + "cpuinfo_min_freq", -1);
+        long mx = readFileLong(cpufreq + "cpuinfo_max_freq", -1);
+        bool online = true;
+        std::string onlinePath = "/sys/devices/system/cpu/cpu" + std::to_string(i) + "/online";
+        struct stat st;
+        if (stat(onlinePath.c_str(), &st) == 0) {
+            online = readFileLong(onlinePath, 1) != 0;
+        }
+        if (!online) cur = -1;
+        arr.push_back({
+            {"index", i},
+            {"online", online},
+            {"usage", g_coreUsage[i].load()},
+            {"freqKHz", cur},
+            {"minFreqKHz", mn},
+            {"maxFreqKHz", mx},
+        });
+    }
+    return arr;
+}
+
+// Locates the main battery node. Vendor trees vary (battery/bms/Battery);
+// the first directory that actually exposes capacity/voltage/current wins.
+static std::string findBatteryBase() {
+    static const char* candidates[] = {
+        "/sys/class/power_supply/battery",
+        "/sys/class/power_supply/bms",
+        "/sys/class/power_supply/Battery",
+    };
+    for (const char* c : candidates) {
+        std::error_code ec;
+        if (!fs::is_directory(c, ec)) continue;
+        for (const char* f : {"capacity", "voltage_now", "current_now"}) {
+            std::ifstream t(std::string(c) + "/" + f);
+            if (t.is_open()) return c;
+        }
+    }
+    return "";
+}
+
+// Some kernels report current_now in mA instead of µA. Values under 10 A
+// worth of µA (i.e. |raw| < 10000) can only be sane as mA on a phone, so
+// scale them up. Sign convention is vendor-dependent and NOT normalized:
+// the `charging` flag (from `status`) is the source of truth for direction.
+static long long normalizeCurrentUA(long long raw) {
+    long long a = raw < 0 ? -raw : raw;
+    if (a > 0 && a < 10000) return raw * 1000;
+    return raw;
+}
+
+static json buildBatteryJson() {
+    json j;
+    j["type"] = "BATTERY_STATS";
+    std::string base = findBatteryBase();
+    if (base.empty() || readFileLong(base + "/present", 1) == 0) {
+        j["present"] = false;
+        return j;
+    }
+    j["present"] = true;
+
+    long cap = readFileLong(base + "/capacity", -1);
+    j["capacity"] = (cap >= 0 && cap <= 100) ? cap : -1;
+
+    std::string status = readFileTrimmed(base + "/status");
+    j["status"] = status;
+    j["charging"] = (status == "Charging");
+    j["health"] = readFileTrimmed(base + "/health");
+
+    long long volt = -1;
+    long long curRaw = 0;
+    bool hasVolt = false, hasCur = false;
+    {
+        std::ifstream f(base + "/voltage_now");
+        long long v;
+        if (f.is_open() && (f >> v)) { volt = v; hasVolt = true; }
+    }
+    {
+        std::ifstream f(base + "/current_now");
+        long long v;
+        if (f.is_open() && (f >> v)) { curRaw = v; hasCur = true; }
+    }
+    j["voltageUV"] = hasVolt ? volt : -1;
+    long long curUA = hasCur ? normalizeCurrentUA(curRaw) : -1;
+    j["currentUA"] = curUA;
+
+    // µV * µA = pW; /1e6 → µW. Reported as magnitude (sign varies by vendor).
+    long long powerUW = -1;
+    if (hasVolt && hasCur) powerUW = std::llabs(volt * curUA) / 1000000LL;
+    j["powerUW"] = powerUW;
+
+    j["tempTenthsC"] = readFileLong(base + "/temp", -1);
+    j["cycleCount"] = getBatteryCycleCount().value_or(-1);
+    j["chargeCounterUAh"] = readFileLong(base + "/charge_counter", -1);
+    j["chargeFullUAh"] = readFileLong(base + "/charge_full", -1);
+    j["chargeFullDesignUAh"] = readFileLong(base + "/charge_full_design", -1);
+    return j;
+}
+
+static json buildMemJson() {
+    std::ifstream f("/proc/meminfo");
+    long total = -1, avail = -1, swapTotal = -1, swapFree = -1;
+    std::string line;
+    while (std::getline(f, line)) {
+        if (line.compare(0, 9, "MemTotal:") == 0) total = std::atol(line.c_str() + 9);
+        else if (line.compare(0, 13, "MemAvailable:") == 0) avail = std::atol(line.c_str() + 13);
+        else if (line.compare(0, 10, "SwapTotal:") == 0) swapTotal = std::atol(line.c_str() + 10);
+        else if (line.compare(0, 9, "SwapFree:") == 0) swapFree = std::atol(line.c_str() + 9);
+    }
+    return {
+        {"totalKb", total},
+        {"availableKb", avail},
+        {"swapTotalKb", swapTotal},
+        {"swapUsedKb", (swapTotal >= 0 && swapFree >= 0) ? swapTotal - swapFree : -1},
+    };
+}
+
+struct PssInfo {
+    bool available = false;
+    long rssKb = -1, pssKb = -1, pssAnonKb = -1, pssFileKb = -1, swapPssKb = -1, privateKb = -1;
+};
+
+// Reads /proc/<pid>/smaps_rollup (kernel >= 4.14). available=false when the
+// node is missing (old kernel) or the process vanished.
+static PssInfo readPssInfo(int pid) {
+    PssInfo info;
+    std::ifstream f("/proc/" + std::to_string(pid) + "/smaps_rollup");
+    if (!f.is_open()) return info;
+    std::string line;
+    long privClean = -1, privDirty = -1;
+    bool any = false;
+    while (std::getline(f, line)) {
+        size_t colon = line.find(':');
+        if (colon == std::string::npos) continue;
+        std::string key = line.substr(0, colon);
+        long val = std::strtol(line.c_str() + colon + 1, nullptr, 10);
+        // Full-key compare: "Pss" must not match "Pss_Anon".
+        if (key == "Rss") { info.rssKb = val; any = true; }
+        else if (key == "Pss") { info.pssKb = val; any = true; }
+        else if (key == "Pss_Anon") { info.pssAnonKb = val; }
+        else if (key == "Pss_File") { info.pssFileKb = val; }
+        else if (key == "SwapPss") { info.swapPssKb = val; }
+        else if (key == "Private_Clean") { privClean = val; }
+        else if (key == "Private_Dirty") { privDirty = val; }
+    }
+    if (privClean >= 0 && privDirty >= 0) info.privateKb = privClean + privDirty;
+    info.available = any;
+    return info;
+}
+
+// ---------------------------------------------------------------------------
+// Push mode: a single subscription at a time; one dedicated thread emits a
+// frame per topic every interval. Frames share the stdout write mutex with
+// regular responses, so they never interleave. UNSUBSCRIBE / daemon shutdown
+// join the thread before acknowledging, so no frame can trail its ack.
+// ---------------------------------------------------------------------------
+
+struct PusherState {
+    std::thread th;
+    std::atomic<bool> active{true};
+    std::condition_variable cv;
+    std::mutex cvMutex;
+    // Per-subscription net delta cache (independent of the NET_PING one).
+    std::unordered_map<std::string, NetStatSnapshot> netCache;
+    std::mutex netMutex;
+};
+
+static std::mutex g_pushers_mutex;
+static std::vector<std::shared_ptr<PusherState>> g_pushers;
+
+static json buildNetPushData(PusherState& st) {
+    std::ifstream netdev("/proc/net/dev");
+    std::string line;
+    auto now = std::chrono::steady_clock::now();
+    json ifaces = json::array();
+    if (netdev.is_open()) {
+        std::getline(netdev, line); // header
+        std::getline(netdev, line);
+        while (std::getline(netdev, line)) {
+            size_t colon = line.find(':');
+            if (colon == std::string::npos) continue;
+            std::string name = line.substr(0, colon);
+            name.erase(0, name.find_first_not_of(' '));
+            std::istringstream iss(line.substr(colon + 1));
+            unsigned long long rx = 0, tx = 0, dummy;
+            iss >> rx;
+            for (int i = 0; i < 7; ++i) iss >> dummy;
+            iss >> tx;
+
+            double rxPerSec = 0, txPerSec = 0;
+            {
+                std::lock_guard<std::mutex> lock(st.netMutex);
+                auto it = st.netCache.find(name);
+                if (it != st.netCache.end()) {
+                    double dt = std::chrono::duration<double>(now - it->second.timestamp).count();
+                    if (dt > 0) {
+                        rxPerSec = (double)(rx - it->second.rxBytes) / dt;
+                        txPerSec = (double)(tx - it->second.txBytes) / dt;
+                    }
+                }
+                st.netCache[name] = {rx, tx, now};
+            }
+            ifaces.push_back({
+                {"name", name},
+                {"rxBytes", rx},
+                {"txBytes", tx},
+                {"rxBytesPerSec", rxPerSec},
+                {"txBytesPerSec", txPerSec},
+            });
+        }
+    }
+    return {{"interfaces", ifaces}};
+}
+
+static json buildPushData(const std::string& topic, PusherState& st) {
+    if (topic == "cpu") {
+        return {
+            {"usage", g_cpuUsage.load()},
+            {"temp", getCpuTemperatureCelsius()},
+            {"cores", buildCoresJson()},
+        };
+    }
+    if (topic == "battery") return buildBatteryJson();
+    if (topic == "mem") return buildMemJson();
+    if (topic == "net") return buildNetPushData(st);
+    return json::object();
+}
+
+static void pusherLoop(std::shared_ptr<PusherState> st, std::vector<std::string> topics, int intervalMs) {
+    long seq = 0;
+    while (st->active.load() && keep_running.load()) {
+        for (const auto& topic : topics) {
+            if (!st->active.load() || !keep_running.load()) break;
+            json frame;
+            frame["type"] = "PUSH";
+            frame["topic"] = topic;
+            frame["seq"] = seq;
+            frame["data"] = buildPushData(topic, *st);
+            if (!send_json(frame)) { st->active.store(false); break; }
+        }
+        if (!st->active.load()) break;
+        ++seq;
+        std::unique_lock<std::mutex> lock(st->cvMutex);
+        st->cv.wait_for(lock, std::chrono::milliseconds(intervalMs),
+                        [&] { return !st->active.load() || !keep_running.load(); });
+    }
+}
+
+static void stopPushersAndJoin() {
+    std::vector<std::shared_ptr<PusherState>> to_join;
+    {
+        std::lock_guard<std::mutex> lock(g_pushers_mutex);
+        to_join.swap(g_pushers);
+    }
+    for (auto& st : to_join) {
+        st->active.store(false);
+    }
+    for (auto& st : to_join) {
+        st->cv.notify_all();
+    }
+    for (auto& st : to_join) {
+        if (st->th.joinable()) st->th.join();
+    }
+}
+
+// Replaces any running subscription with a new one. topics is pre-validated.
+static void startSubscription(const std::vector<std::string>& topics, int intervalMs) {
+    stopPushersAndJoin();
+    auto st = std::make_shared<PusherState>();
+    st->th = std::thread(pusherLoop, st, topics, intervalMs);
+    std::lock_guard<std::mutex> lock(g_pushers_mutex);
+    g_pushers.push_back(std::move(st));
+}
+
 void processCommand(const std::string &received) {
     json j_out;
     bool respond = true;
@@ -664,6 +1081,27 @@ void processCommand(const std::string &received) {
             bool success = (pid > 0) && killProcess(pid);
             j_out["type"] = "KILL_RESULT";
             j_out["success"] = success;
+        } else if (cmd == "KILL_GRACEFUL") {
+            // Deliver SIGTERM immediately, answer right away, and let a
+            // detached worker escalate to SIGKILL if the process is still
+            // alive after the grace period. Never blocks the command loop.
+            int pid = j_in.value("pid", -1);
+            int timeoutMs = std::clamp(j_in.value("timeoutMs", 3000), 200, 10000);
+            bool success = false;
+            if (pid > 0) {
+                long starttime = readStarttimeRaw(pid);
+                if (starttime == -1) {
+                    success = true; // already gone — goal achieved
+                } else if (kill(pid, SIGTERM) == 0) {
+                    success = true;
+                    std::thread(gracefulKillWorker, pid, timeoutMs, starttime).detach();
+                }
+            }
+            j_out["type"] = "KILL_RESULT";
+            j_out["success"] = success;
+            j_out["graceful"] = true;
+            j_out["forced"] = false;
+            j_out["pid"] = pid;
         } else if (cmd == "FORCE_STOP") {
             std::string pkg = j_in.value("pkg", "");
             bool success = false;
@@ -709,6 +1147,51 @@ void processCommand(const std::string &received) {
         } else if (cmd == "BAT_CHARGE_CYCLES") {
             j_out["type"] = "CHARGE_CYCLES";
             j_out["cycles"] = getBatteryCycleCount().value_or(-1);
+        } else if (cmd == "CORE_PING") {
+            j_out["type"] = "CORE_USAGE";
+            j_out["usage"] = g_cpuUsage.load();
+            j_out["cores"] = buildCoresJson();
+        } else if (cmd == "BATTERY_PING") {
+            j_out = buildBatteryJson();
+        } else if (cmd == "PSS_PING") {
+            int pid = j_in.value("pid", -1);
+            PssInfo info = readPssInfo(pid);
+            j_out["type"] = "PSS";
+            j_out["pid"] = pid;
+            j_out["available"] = info.available;
+            if (info.available) {
+                j_out["rssKb"] = info.rssKb;
+                j_out["pssKb"] = info.pssKb;
+                j_out["pssAnonKb"] = info.pssAnonKb;
+                j_out["pssFileKb"] = info.pssFileKb;
+                j_out["swapPssKb"] = info.swapPssKb;
+                j_out["privateKb"] = info.privateKb;
+            }
+        } else if (cmd == "SUBSCRIBE") {
+            std::vector<std::string> topics;
+            if (j_in.contains("topics") && j_in["topics"].is_array()) {
+                for (const auto& t : j_in["topics"]) {
+                    if (t.is_string()) topics.push_back(t.get<std::string>());
+                }
+            }
+            static const std::vector<std::string> kValidTopics = {"cpu", "battery", "mem", "net"};
+            bool allValid = !topics.empty();
+            for (const auto& t : topics) {
+                if (std::find(kValidTopics.begin(), kValidTopics.end(), t) == kValidTopics.end()) allValid = false;
+            }
+            if (!allValid) {
+                j_out["type"] = "ERROR";
+                j_out["message"] = "SUBSCRIBE needs topics from: cpu, battery, mem, net";
+            } else {
+                int intervalMs = std::clamp(j_in.value("intervalMs", 1000), 250, 60000);
+                startSubscription(topics, intervalMs);
+                j_out["type"] = "SUBSCRIBED";
+                j_out["topics"] = topics;
+                j_out["intervalMs"] = intervalMs;
+            }
+        } else if (cmd == "UNSUBSCRIBE") {
+            stopPushersAndJoin();
+            j_out["type"] = "UNSUBSCRIBED";
         } else if (cmd == "LIST_NET_INTERFACES") {
             auto interfaces = listNetInterfaces();
             json interfaces_j = json::array();
@@ -746,8 +1229,10 @@ void processCommand(const std::string &received) {
             j_out["rxBytes"] = curr.rxBytes;
             j_out["txBytes"] = curr.txBytes;
         } else {
-            log_line("Unknown command: " + cmd);
-            respond = false;
+            // Protocol v2: never leave a well-formed request unanswered.
+            j_out["type"] = "ERROR";
+            j_out["message"] = "unknown command";
+            j_out["cmd"] = cmd;
         }
 
         // Protocol v2: echo the caller's request id so responses can be
@@ -757,7 +1242,8 @@ void processCommand(const std::string &received) {
         }
     } catch (const std::exception& e) {
         log_line("JSON parse error: " + std::string(e.what()) + " | Data: " + received);
-        respond = false;
+        j_out = json{{"type", "ERROR"}, {"message", "malformed request"}};
+        respond = true;
     }
 
     if (respond && !j_out.is_null()) {
@@ -801,6 +1287,7 @@ int main() {
     }
 
     keep_running.store(false);
+    stopPushersAndJoin();
     sampler.join();
     return 0;
 }
