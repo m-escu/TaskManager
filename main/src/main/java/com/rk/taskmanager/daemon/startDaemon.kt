@@ -6,21 +6,21 @@ import com.rk.commons.application
 import com.rk.taskmanager.settings.WorkingMode
 import com.rk.taskmanager.shizuku.ShizukuShell
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 
-private var daemonCalled = false
+// Single-flight guard: concurrent callers (UI + widget + QS tile in the
+// future) queue up on this mutex instead of racing on a boolean flag.
+private val daemonStartMutex = Mutex()
+
 suspend fun startDaemon(
     context: Context,
     mode: Int
-): DaemonResult {
+): DaemonResult = daemonStartMutex.withLock {
     val daemonFile = File(application!!.applicationInfo.nativeLibraryDir, "libtaskmanagerd.so")
-    val result = withContext(Dispatchers.IO) {
-        if (daemonCalled) {
-            return@withContext DaemonResult.DAEMON_ALREADY_BEING_STARTED
-        }
-        daemonCalled = true
-
+    withContext(Dispatchers.IO) {
         try {
             when (mode) {
                 WorkingMode.SHIZUKU.id -> {
@@ -41,7 +41,7 @@ suspend fun startDaemon(
                     val started = DaemonServer.start(process.inputStream, process.outputStream)
                     if (!started) {
                         return@withContext DaemonResult.DAEMON_REFUSED.also {
-                            it.message = "Failed to start daemon I/O"
+                            it.message = DaemonServer.lastError ?: "Failed to start daemon I/O"
                         }
                     }
 
@@ -65,7 +65,7 @@ suspend fun startDaemon(
                     val started = DaemonServer.start(process.inputStream, process.outputStream)
                     if (!started) {
                         return@withContext DaemonResult.DAEMON_REFUSED.also {
-                            it.message = "Failed to start daemon I/O"
+                            it.message = DaemonServer.lastError ?: "Failed to start daemon I/O"
                         }
                     }
 
@@ -88,9 +88,6 @@ suspend fun startDaemon(
             }
         }
     }
-
-    daemonCalled = false
-    return result
 }
 
 suspend fun isSuWorking(): Pair<Boolean, Exception?> = withContext(Dispatchers.IO) {

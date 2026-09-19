@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # Daemon integration tests: compile the C++ daemon with the host toolchain
+  # and pipe JSON through it against the runner's real /proc. No Android SDK
+  # needed, so this fails fast and independently of the Android build.
+  daemon-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build daemon (host toolchain)
+        run: bash taskmanagerd/host_tests/build_host.sh
+
+      - name: Run protocol integration tests
+        run: python3 taskmanagerd/host_tests/test_daemon.py
+
+  # Android app: compile, run JVM unit tests, produce a debug APK artifact
+  # for manual testing. No release pipeline (yet).
+  android-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache NDK
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/ndk/28.0.13004108
+          key: ndk-28.0.13004108
+
+      - name: Install NDK
+        run: sdkmanager --install "ndk;28.0.13004108" > /dev/null
+
+      - name: Set up Gradle caching
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK + run unit tests
+        run: ./gradlew :app:assembleDebug :main:testDebugUnitTest --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TaskManager-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

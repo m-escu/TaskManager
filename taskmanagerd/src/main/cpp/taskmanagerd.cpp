@@ -1,3 +1,24 @@
+// taskmanagerd — privileged system monitor daemon for Task Manager.
+//
+// Runs as a standalone executable (packaged as libtaskmanagerd.so so Android
+// extracts it into nativeLibraryDir) started via root `su -c` or a Shizuku
+// shell. Reads kernel interfaces directly (/proc, /sys) and speaks
+// newline-delimited JSON on stdin/stdout.
+//
+// Protocol v2:
+//   - On startup the daemon immediately announces itself:
+//       {"type":"HELLO","proto":2,"version":"...","caps":[...]}
+//     The app validates `proto` before using the daemon (version handshake,
+//     so daemon and app can evolve independently).
+//   - Every request may carry an "id" field; responses echo it back so the
+//     app can correlate responses with requests regardless of ordering.
+//   - CPU_PING is served from a background sampler thread: it never blocks
+//     the command loop, and the window is a fixed 100ms rather than the gap
+//     between two successive polls.
+//   - Per-process CPU usage is windowed (delta of utime+stime between
+//     successive samples). The first time a pid is seen, the lifetime
+//     average is reported as a fallback (same as protocol v1 behaviour).
+
 #include <cerrno>
 #include <csignal>
 #include <cstdio>
@@ -12,16 +33,19 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <memory>
-#include <regex>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <thread>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <dirent.h>
@@ -31,10 +55,53 @@
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
+static const char* DAEMON_NAME = "taskmanagerd";
+static const char* DAEMON_VERSION = "1.6.0-fork1";
+static constexpr int PROTOCOL_VERSION = 2;
+
+// Capabilities advertised in HELLO. The app can degrade gracefully when a
+// capability is missing (older daemon) or use extra ones (newer daemon).
+static json daemonCaps() {
+    return json::array({
+        "request_id",           // responses echo the request "id"
+        "windowed_proc_cpu",    // per-process CPU is a windowed delta, not lifetime average
+        "nonblocking_cpu_ping", // CPU_PING answered from a sampler thread
+        "proc_cpu_time",        // processes expose raw cpuTimeTicks
+    });
+}
+
+static json helloMessage() {
+    return {
+        {"type", "HELLO"},
+        {"proto", PROTOCOL_VERSION},
+        {"daemon", DAEMON_NAME},
+        {"version", DAEMON_VERSION},
+        {"caps", daemonCaps()},
+    };
+}
+
 static std::string toLower(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(),
                    [](unsigned char c){ return std::tolower(c); });
     return s;
+}
+
+static bool isAllDigits(const std::string& s) {
+    if (s.empty()) return false;
+    for (unsigned char c : s) {
+        if (!std::isdigit(c)) return false;
+    }
+    return true;
+}
+
+// Package names are interpolated into a shell command for FORCE_STOP, so the
+// charset is restricted to a safe subset (no whitespace, no metacharacters).
+static bool isValidPackageName(const std::string& pkg) {
+    if (pkg.empty() || pkg.size() > 255) return false;
+    for (unsigned char c : pkg) {
+        if (!(std::isalnum(c) || c == '.' || c == '_')) return false;
+    }
+    return true;
 }
 
 static bool isCpuThermalType(const std::string& type) {
@@ -110,28 +177,23 @@ std::optional<int> getBatteryCycleCount() {
     return std::nullopt;
 }
 
-static std::regex pid_regex("\\d+");
-
 std::vector<int> listPids() {
     std::vector<int> pids;
     pids.reserve(256);
     for (const auto &entry : fs::directory_iterator("/proc")) {
         try {
-            if (entry.is_directory()) {
-                std::string name = entry.path().filename();
-                if (std::regex_match(name, pid_regex)) {
-                    pids.push_back(std::stoi(name));
-                }
+            if (entry.is_directory() && isAllDigits(entry.path().filename().string())) {
+                pids.push_back(std::stoi(entry.path().filename().string()));
             }
         } catch (...) {}
     }
     return pids;
 }
 
-static volatile sig_atomic_t keep_running = 1;
+static std::atomic<bool> keep_running{true};
 
 void handle_sigint(int) {
-    keep_running = 0;
+    keep_running.store(false);
 }
 
 std::string now_str() {
@@ -148,8 +210,13 @@ void log_line(const std::string &line) {
     write(STDERR_FILENO, msg.c_str(), msg.size());
 }
 
+// All stdout writes go through this mutex so responses are never interleaved,
+// even once additional threads emit messages (sampler/push in later phases).
+static std::mutex g_write_mutex;
+
 bool send_msg(const std::string &msg) {
     std::string data = msg + "\n";
+    std::lock_guard<std::mutex> lock(g_write_mutex);
     size_t total = 0;
     while (total < data.size()) {
         ssize_t written = write(STDOUT_FILENO, data.data() + total, data.size() - total);
@@ -163,15 +230,20 @@ bool send_json(const json &j) {
     return send_msg(j.dump());
 }
 
+// ---------------------------------------------------------------------------
+// System-wide CPU sampler: a background thread keeps a fresh 100ms-window
+// usage value in an atomic. Commands read it without ever blocking.
+// ---------------------------------------------------------------------------
+
 struct CpuStat {
-    long user, nice, system, idle, iowait, irq, softirq, steal;
+    long user = 0, nice = 0, system = 0, idle = 0, iowait = 0, irq = 0, softirq = 0, steal = 0;
     long total() const { return user + nice + system + idle + iowait + irq + softirq + steal; }
     long active() const { return total() - idle; }
 };
 
 CpuStat readCpuStat() {
     std::ifstream file("/proc/stat");
-    if (!file.is_open()) return {0,0,0,0,0,0,0,0};
+    if (!file.is_open()) return {};
     std::string line;
     std::getline(file, line);
     if (line.rfind("cpu ", 0) == 0) {
@@ -182,18 +254,68 @@ CpuStat readCpuStat() {
         for (int i = 0; i < 8; ++i) if (!(iss >> v[i])) break;
         return {v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7]};
     }
-    return {0,0,0,0,0,0,0,0};
+    return {};
 }
 
-int calculateCpuUsage() {
+static std::atomic<int> g_cpuUsage{-1}; // -1 = no sample yet
+
+void cpuSamplerLoop() {
     CpuStat prev = readCpuStat();
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    CpuStat curr = readCpuStat();
-    uint64_t totalDiff = curr.total() - prev.total();
-    uint64_t activeDiff = curr.active() - prev.active();
-    if (totalDiff == 0) return 0;
-    double usage = (double)activeDiff / (double)totalDiff * 100.0;
-    return std::clamp((int)usage, 0, 100);
+    while (keep_running.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        if (!keep_running.load()) break;
+        CpuStat curr = readCpuStat();
+        long totalDiff = curr.total() - prev.total();
+        long activeDiff = curr.active() - prev.active();
+        if (totalDiff > 0) {
+            double usage = (double)activeDiff / (double)totalDiff * 100.0;
+            g_cpuUsage.store(std::clamp((int)usage, 0, 100));
+        }
+        prev = curr;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Windowed per-process CPU: keep the last (utime+stime) tick count and sample
+// timestamp per pid. Usage = delta ticks / (dt * CLK_TCK) * 100. The first
+// sample for a pid returns -1 so the caller can fall back to the lifetime
+// average. Stale entries are pruned on every LIST_PROCESS.
+// ---------------------------------------------------------------------------
+
+struct ProcCpuSample {
+    long totalTicks;
+    std::chrono::steady_clock::time_point ts;
+};
+
+static std::mutex g_procCpuMutex;
+static std::unordered_map<int, ProcCpuSample> g_procCpuSamples;
+
+static float windowedProcCpuUsage(int pid, long totalTicks) {
+    std::lock_guard<std::mutex> lock(g_procCpuMutex);
+    auto now = std::chrono::steady_clock::now();
+    auto it = g_procCpuSamples.find(pid);
+    if (it == g_procCpuSamples.end()) {
+        g_procCpuSamples.emplace(pid, ProcCpuSample{totalTicks, now});
+        return -1.0f;
+    }
+    auto &prev = it->second;
+    double dt = std::chrono::duration<double>(now - prev.ts).count();
+    long dTicks = totalTicks - prev.totalTicks;
+    prev.totalTicks = totalTicks;
+    prev.ts = now;
+    if (dt <= 0.0 || dTicks < 0) return -1.0f;
+    double hz = (double)sysconf(_SC_CLK_TCK);
+    double usage = (dTicks / hz) / dt * 100.0;
+    return (float)std::max(0.0, usage); // may exceed 100 on multi-core, like top(1)
+}
+
+static void pruneProcCpuSamples(const std::vector<int>& livePids) {
+    std::unordered_set<int> live(livePids.begin(), livePids.end());
+    std::lock_guard<std::mutex> lock(g_procCpuMutex);
+    for (auto it = g_procCpuSamples.begin(); it != g_procCpuSamples.end();) {
+        if (live.count(it->first) == 0) it = g_procCpuSamples.erase(it);
+        else ++it;
+    }
 }
 
 // Parses files that expose GPU busy time. Supports several formats:
@@ -307,6 +429,7 @@ struct Proc {
     long virtualMemoryKb;
     std::string cgroup;
     std::string executablePath;
+    long cpuTimeTicks; // raw utime+stime, for CPU-time display modes
 };
 
 long getSystemUptime() {
@@ -316,24 +439,38 @@ long getSystemUptime() {
     return static_cast<long>(uptimeSeconds * sysconf(_SC_CLK_TCK));
 }
 
-float calculateProcessCpuUsage(int pid) {
+// Reads utime+stime (in clock ticks) and starttime for a pid. Returns false if
+// the process vanished or the file is unreadable.
+bool readProcCpuFields(int pid, long &totalTime, long &startTime) {
     std::string statPath = "/proc/" + std::to_string(pid) + "/stat";
     std::ifstream statFile(statPath);
-    if (!statFile.is_open()) return 0.0f;
+    if (!statFile.is_open()) return false;
     std::string line;
-    std::getline(statFile, line);
+    if (!std::getline(statFile, line)) return false;
     size_t lastParen = line.rfind(')');
-    if (lastParen == std::string::npos) return 0.0f;
+    if (lastParen == std::string::npos) return false;
     std::istringstream iss(line.substr(lastParen + 2));
     std::string state;
-    long utime = 0, stime = 0, starttime = 0;
+    long utime = 0, stime = 0;
     for (int i = 0; i < 11; ++i) { std::string dummy; iss >> dummy; }
     iss >> utime >> stime;
     for (int i = 0; i < 6; ++i) { std::string dummy; iss >> dummy; }
-    iss >> starttime;
-    long totalTime = utime + stime;
+    iss >> startTime;
+    totalTime = utime + stime;
+    return true;
+}
+
+float calculateProcessCpuUsage(int pid) {
+    long totalTime = 0, startTime = 0;
+    if (!readProcCpuFields(pid, totalTime, startTime)) return 0.0f;
+
+    // Prefer the windowed delta; fall back to the lifetime average the first
+    // time the pid is seen (keeps v1 clients working too).
+    float windowed = windowedProcCpuUsage(pid, totalTime);
+    if (windowed >= 0.0f) return windowed;
+
     long uptime = getSystemUptime();
-    long elapsedTime = uptime - starttime;
+    long elapsedTime = uptime - startTime;
     if (elapsedTime > 0) return (100.0f * totalTime) / elapsedTime;
     return 0.0f;
 }
@@ -374,19 +511,23 @@ Proc readProc(int pid) {
     if (commFile.is_open()) std::getline(commFile, p.name);
     std::ifstream cmdFile(procPath + "/cmdline", std::ios::binary);
     if (cmdFile.is_open()) std::getline(cmdFile, p.cmdLine, '\0');
-    std::ifstream statFile(procPath + "/stat");
-    if (statFile.is_open()) {
-        std::string line; std::getline(statFile, line);
-        size_t lastParen = line.rfind(')');
-        if (lastParen != std::string::npos) {
-            std::istringstream iss(line.substr(lastParen + 2));
-            std::string dummy;
-            for (int i = 0; i < 6; ++i) iss >> dummy;
-            for (int i = 0; i < 9; ++i) iss >> dummy;
-            iss >> dummy;
-            iss >> p.nice;
-            iss >> dummy >> dummy;
-            iss >> p.startTime;
+    long totalTime = 0;
+    long startTime = 0;
+    if (readProcCpuFields(pid, totalTime, startTime)) {
+        p.startTime = startTime;
+        std::ifstream statFile(procPath + "/stat");
+        std::string line;
+        if (std::getline(statFile, line)) {
+            size_t lastParen = line.rfind(')');
+            if (lastParen != std::string::npos) {
+                std::istringstream iss(line.substr(lastParen + 2));
+                std::string dummy;
+                for (int i = 0; i < 6; ++i) iss >> dummy;
+                for (int i = 0; i < 9; ++i) iss >> dummy;
+                iss >> dummy;
+                iss >> p.nice;
+                iss >> dummy >> dummy;
+            }
         }
     }
     long uptime = getSystemUptime();
@@ -402,6 +543,7 @@ Proc readProc(int pid) {
         else if (line.compare(0, 8, "Threads:") == 0) { p.threads = std::stoi(line.substr(9)); fieldsFound++; }
         else if (line.compare(0, 6, "State:") == 0) { p.state = line.substr(7); fieldsFound++; }
     }
+    p.cpuTimeTicks = totalTime;
     p.cpuUsage = calculateProcessCpuUsage(pid);
     p.isForeground = isForegroundProcess(pid);
     p.cgroup = getCgroup(pid);
@@ -416,7 +558,8 @@ json procToJson(const Proc &p) {
         {"memoryUsageKb", p.memoryUsageKb}, {"cmdLine", p.cmdLine}, {"state", p.state},
         {"threads", p.threads}, {"startTime", p.startTime}, {"elapsedTime", p.elapsedTime},
         {"residentSetSizeKb", p.residentSetSizeKb}, {"virtualMemoryKb", p.virtualMemoryKb},
-        {"cgroup", p.cgroup}, {"executablePath", p.executablePath}
+        {"cgroup", p.cgroup}, {"executablePath", p.executablePath},
+        {"cpuTimeTicks", p.cpuTimeTicks}
     };
 }
 
@@ -425,6 +568,7 @@ std::vector<Proc> collectProcs() {
     std::vector<int> pids = listPids();
     procs.reserve(pids.size());
     for (int pid : pids) { try { procs.push_back(readProc(pid)); } catch (...) {} }
+    pruneProcCpuSamples(pids);
     return procs;
 }
 
@@ -504,76 +648,67 @@ struct NetStatSnapshot {
 
 static std::unordered_map<std::string, NetStatSnapshot> netStatCache;
 
-
 void processCommand(const std::string &received) {
+    json j_out;
+    bool respond = true;
     try {
         json j_in = json::parse(received);
         std::string cmd = j_in.value("cmd", "");
-        json j_out;
 
         if (cmd == "PING") {
             j_out["type"] = "PONG";
-            send_json(j_out);
+        } else if (cmd == "HELLO") {
+            j_out = helloMessage();
         } else if (cmd == "KILL") {
             int pid = j_in.value("pid", -1);
             bool success = (pid > 0) && killProcess(pid);
             j_out["type"] = "KILL_RESULT";
             j_out["success"] = success;
-            send_json(j_out);
         } else if (cmd == "FORCE_STOP") {
             std::string pkg = j_in.value("pkg", "");
-            std::regex pkg_regex("^[a-zA-Z0-9._]+$");
             bool success = false;
-            if (std::regex_match(pkg, pkg_regex) && pkg.length() <= 255) {
+            if (isValidPackageName(pkg)) {
                 std::string scmd = "am force-stop " + pkg;
                 success = (system(scmd.c_str()) == 0);
             }
             j_out["type"] = "KILL_RESULT";
             j_out["success"] = success;
-            send_json(j_out);
         } else if (cmd == "KILL_GROUP") {
             int pgid = j_in.value("pgid", -1);
             bool success = (pgid > 0) ? killProcessGroup(pgid) : false;
             j_out["type"] = "KILL_RESULT";
             j_out["success"] = success;
-            send_json(j_out);
         } else if (cmd == "STOP_SELF" || cmd == "BUSY") {
-            keep_running = 0;
+            keep_running.store(false);
+            respond = false;
         } else if (cmd == "LIST_PROCESS") {
             auto procs = collectProcs();
             json procs_j = json::array();
             for (const auto &p : procs) procs_j.push_back(procToJson(p));
             j_out["type"] = "PROCESS_LIST";
             j_out["processes"] = procs_j;
-            send_json(j_out);
         } else if (cmd == "CPU_PING") {
             j_out["type"] = "CPU_USAGE";
-            j_out["usage"] = calculateCpuUsage();
-            send_json(j_out);
+            j_out["usage"] = g_cpuUsage.load();
         } else if (cmd == "SWAP_PING") {
             long used, total;
             getSwapUsage(used, total);
             j_out["type"] = "SWAP_USAGE";
             j_out["used"] = used;
             j_out["total"] = total;
-            send_json(j_out);
         } else if (cmd == "GPU_PING") {
             j_out["type"] = "GPU_USAGE";
             j_out["usage"] = calculateGpuUsage();
-            send_json(j_out);
         } else if (cmd == "CTEMP_PING") {
             j_out["type"] = "CPU_TEMP";
             j_out["temp"] = getCpuTemperatureCelsius();
-            send_json(j_out);
         } else if (cmd == "PING_PID_CPU") {
             int pid = j_in.value("pid", -1);
             j_out["type"] = "PROCESS_CPU_USAGE";
             j_out["usage"] = calculateProcessCpuUsage(pid);
-            send_json(j_out);
-        } else if(cmd == "BAT_CHARGE_CYCLES"){
+        } else if (cmd == "BAT_CHARGE_CYCLES") {
             j_out["type"] = "CHARGE_CYCLES";
             j_out["cycles"] = getBatteryCycleCount().value_or(-1);
-            send_json(j_out);
         } else if (cmd == "LIST_NET_INTERFACES") {
             auto interfaces = listNetInterfaces();
             json interfaces_j = json::array();
@@ -582,7 +717,6 @@ void processCommand(const std::string &received) {
             }
             j_out["type"] = "NET_INTERFACE_LIST";
             j_out["interfaces"] = interfaces_j;
-            send_json(j_out);
         } else if (cmd == "NET_PING") {
             std::string iface = j_in.value("interface", "");
             auto now = std::chrono::steady_clock::now();
@@ -611,12 +745,23 @@ void processCommand(const std::string &received) {
 
             j_out["rxBytes"] = curr.rxBytes;
             j_out["txBytes"] = curr.txBytes;
-            send_json(j_out);
         } else {
             log_line("Unknown command: " + cmd);
+            respond = false;
+        }
+
+        // Protocol v2: echo the caller's request id so responses can be
+        // correlated with requests regardless of arrival order.
+        if (respond && j_in.contains("id") && !j_in["id"].is_null()) {
+            j_out["id"] = j_in["id"];
         }
     } catch (const std::exception& e) {
         log_line("JSON parse error: " + std::string(e.what()) + " | Data: " + received);
+        respond = false;
+    }
+
+    if (respond && !j_out.is_null()) {
+        send_json(j_out);
     }
 }
 
@@ -625,11 +770,18 @@ int main() {
     signal(SIGTERM, handle_sigint);
     signal(SIGPIPE, SIG_IGN);
 
+    // Protocol v2 handshake: announce who we are before the app says anything.
+    // The app validates proto/caps and refuses to talk to incompatible daemons.
+    send_json(helloMessage());
+
+    // Background sampler keeps g_cpuUsage fresh; CPU_PING never blocks.
+    std::thread sampler(cpuSamplerLoop);
+
     const size_t BUF_SIZE = 8192;
     std::unique_ptr<char[]> buf(new char[BUF_SIZE]);
     std::string recv_buffer;
 
-    while (keep_running) {
+    while (keep_running.load()) {
         ssize_t r = read(STDIN_FILENO, buf.get(), BUF_SIZE - 1);
         if (r > 0) {
             buf[r] = '\0';
@@ -648,5 +800,7 @@ int main() {
         }
     }
 
+    keep_running.store(false);
+    sampler.join();
     return 0;
 }
