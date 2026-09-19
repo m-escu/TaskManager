@@ -27,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -39,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -58,18 +60,25 @@ import com.rk.taskmanager.navControllerRef
 import com.rk.taskmanager.screens.drawableTobitMap
 import com.rk.taskmanager.screens.selectedscreen
 import com.rk.taskmanager.settings.SettingsRoutes
+import com.rk.taskmanager.settings.WorkingMode
+import com.rk.taskmanager.shizuku.ShizukuShell
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import org.json.JSONObject
 import java.io.File
+import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 val netGraphHandler = GraphDataHandler(seriesCount = 2)
 
 private val NET_PERIOD_DAYS = intArrayOf(1, 7, 30)
 private const val MAX_APP_ROWS = 50
+private const val SU_TIMEOUT_SECONDS = 15L
 private const val TAG = "NetScreen"
 
 /** One app (or uid) row of the per-app traffic list. */
@@ -94,41 +103,105 @@ fun hasUsageAccess(context: Context): Boolean {
     return mode == AppOpsManager.MODE_ALLOWED
 }
 
+/** Result of one privileged exec attempt: exit code + merged output, or null on failure. */
+private typealias ExecAttempt = Pair<Int, String>?
+
 /**
- * Self-grant attempt (fork roadmap: "appops self-grant"): the app already
- * talks to a root daemon, so on rooted devices `su` can grant the usage
- * access appop without the user hunting through settings. Shizuku users get
- * the settings route instead.
+ * Runs [argv] through Shizuku (adb-level shell identity — the same identity
+ * `adb shell appops set` uses, which is sufficient for appop changes even
+ * without root). Null when Shizuku is unavailable or the exec throws.
+ */
+private suspend fun shizukuRun(argv: Array<String?>): ExecAttempt {
+    return try {
+        if (!ShizukuShell.isShizukuRunning()) {
+            Log.d(TAG, "shizuku exec skipped (binder not alive)")
+            null
+        } else {
+            val (exit, out) = ShizukuShell.newProcess(argv, arrayOf(), "/")
+            exit to out.trim()
+        }
+    } catch (e: Exception) {
+        Log.d(TAG, "shizuku exec ${argv.filterNotNull().joinToString(" ")} threw: ${e.message}")
+        null
+    }
+}
+
+/**
+ * Runs [command] through `su` with a hard timeout — some su managers hang
+ * waiting for an approval prompt the user never sees, and this must never
+ * freeze the screen coroutine. Null on exec failure / timeout.
+ */
+private fun suRun(command: String): ExecAttempt {
+    return try {
+        val process = ProcessBuilder("su", "-c", command)
+            .redirectErrorStream(true)
+            .start()
+        val finished = process.waitFor(SU_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        if (!finished) process.destroyForcibly()
+        val output = process.inputStream.bufferedReader().use { it.readText() }.trim()
+        val exit = if (finished) process.waitFor() else -1
+        exit to output
+    } catch (e: Exception) {
+        Log.d(TAG, "su exec `$command` threw: ${e.message}")
+        null
+    }
+}
+
+/**
+ * Self-grant attempt (fork roadmap: "appops self-grant"). The op is granted
+ * through the SAME privileged channel the daemon already uses, so whatever
+ * mode the user started the daemon in keeps working here:
+ *  - ROOT mode -> `su -c cmd appops set ...` (APatch/Magisk/KernelSU)
+ *  - SHIZUKU mode -> Shizuku exec as adb-shell identity, which holds
+ *    MANAGE_APP_OPS_MODES even without root
+ * The other channel is tried afterwards as a fallback (e.g. an APatch user
+ * running the daemon via Shizuku can still approve the su prompt).
  *
- * The op is registered under different names depending on Android version
- * (legacy [PACKAGE_USAGE_STATS] vs namespaced [android:package_usage_stats])
- * and some su implementations only accept the explicit `cmd appops` form,
- * so every variant is tried until one actually flips the appop.
+ * The Usage access toggle in system settings flips the appop registered as
+ * OPSTR_GET_USAGE_STATS, i.e. the namespaced string "android:get_usage_stats"
+ * (short name "GET_USAGE_STATS"). The app's own check below uses the very same
+ * constant, and `appops set` rejects anything else with "Unknown operation"
+ * — the historical "android:package_usage_stats" spelling is NOT an appop
+ * name (it is the *permission* name), so it is kept only as a last-ditch
+ * exotic-OEM fallback. Every variant is retried until the appop flips.
  */
 suspend fun grantUsageAccessViaRoot(context: Context): Boolean = withContext(Dispatchers.IO) {
     if (hasUsageAccess(context)) return@withContext true
     val pkg = context.packageName
-    val commands = listOf(
-        "appops set --user 0 $pkg android:package_usage_stats allow",
-        "appops set $pkg PACKAGE_USAGE_STATS allow",
-        "cmd appops set --user 0 $pkg android:package_usage_stats allow",
-        "cmd appops set $pkg PACKAGE_USAGE_STATS allow",
+    val opNames = listOf(
+        "android:get_usage_stats",       // OPSTR_GET_USAGE_STATS — what Settings flips
+        "GET_USAGE_STATS",               // legacy short name accepted by the appops shell
+        "android:package_usage_stats",   // permission spellings — harmless if rejected
+        "PACKAGE_USAGE_STATS",
     )
-    for (cmd in commands) {
-        try {
-            val process = ProcessBuilder("su", "-c", cmd)
-                .redirectErrorStream(true)
-                .start()
-            val output = process.inputStream.bufferedReader().use { it.readText() }.trim()
-            val exit = process.waitFor()
-            Log.d(TAG, "grantUsageAccess `$cmd` -> exit=$exit output=$output")
+
+    val shizukuCmd: (String) -> ExecAttempt = { op ->
+        shizukuRun(arrayOf<String?>("cmd", "appops", "set", "--user", "0", pkg, op, "allow"))
+    }
+    val suCmd: (String) -> ExecAttempt = { op ->
+        suRun("cmd appops set --user 0 $pkg $op allow")
+    }
+
+    val attempts: List<(String) -> ExecAttempt> = when (Settings.workingMode) {
+        WorkingMode.SHIZUKU.id -> listOf(shizukuCmd, suCmd)
+        else -> listOf(suCmd, shizukuCmd)
+    }
+
+    for (attempt in attempts) {
+        for (op in opNames) {
+            val (exit, output) = attempt(op) ?: continue
+            Log.d(TAG, "grant attempt op=$op exit=$exit out=${output.take(200)}")
             if (exit == 0 && hasUsageAccess(context)) return@withContext true
-        } catch (e: Exception) {
-            Log.d(TAG, "grantUsageAccess `$cmd` threw: ${e.message}")
         }
     }
-    // Final re-check in case the appop change propagated asynchronously.
-    hasUsageAccess(context)
+    // The appop write can propagate asynchronously on some builds; re-check
+    // a few times before giving up.
+    repeat(3) {
+        delay(300)
+        if (hasUsageAccess(context)) return@withContext true
+    }
+    Log.w(TAG, "usage access grant failed (mode=${Settings.workingMode})")
+    false
 }
 
 /** Aggregates Wi-Fi + mobile + Ethernet buckets per uid; null when access is missing. */
@@ -136,50 +209,108 @@ suspend fun queryPerAppUsage(
     context: Context,
     sinceMs: Long,
 ): Map<Int, LongArray>? = withContext(Dispatchers.IO) {
-    if (!hasUsageAccess(context)) return@withContext null
+    if (!hasUsageAccess(context)) {
+        Log.w(TAG, "per-app query skipped: usage access appop not granted")
+        return@withContext null
+    }
     val nsm = context.getSystemService(Context.NETWORK_STATS_SERVICE) as? NetworkStatsManager
-        ?: return@withContext null
+    if (nsm == null) {
+        Log.w(TAG, "per-app query skipped: NetworkStatsManager unavailable")
+        return@withContext null
+    }
     val end = System.currentTimeMillis()
     val perUid = HashMap<Int, LongArray>(256)
 
-    // NetworkTemplate is not part of the public SDK stubs on every compile
-    // version, so the standard templates + querySummary are invoked
-    // reflectively. The static builders exist since API 9-ish (Ethernet since
-    // 26 = our minSdk), so this is runtime-safe across 26..36+.
+    // NetworkTemplate is not part of the public SDK stubs on any compile
+    // version, so templates + querySummary are invoked reflectively. Every
+    // transport is resolved and queried INDEPENDENTLY: a missing builder for
+    // one transport (e.g. the no-arg buildTemplateMobile() does not exist on
+    // S+) must never abort the others.
     try {
         val templateClass = Class.forName("android.net.NetworkTemplate")
-        val builders = listOf(
-            templateClass.getMethod("buildTemplateWifi"),
-            templateClass.getMethod("buildTemplateMobile"),
-            templateClass.getMethod("buildTemplateEthernet"),
-        )
         val querySummary = nsm.javaClass.getMethod(
             "querySummary",
             templateClass,
             Long::class.javaPrimitiveType,
             Long::class.javaPrimitiveType,
         )
-        for (builder in builders) {
+        for ((label, template) in buildNetTemplates(templateClass)) {
+            var stats: NetworkStats? = null
             try {
-                val template = builder.invoke(null)
-                val stats = querySummary.invoke(nsm, template, sinceMs, end) as NetworkStats
+                stats = querySummary.invoke(nsm, template, sinceMs, end) as NetworkStats
                 val bucket = NetworkStats.Bucket()
+                var buckets = 0
                 while (stats.hasNextBucket()) {
                     stats.getNextBucket(bucket)
+                    buckets++
                     if (bucket.rxBytes <= 0 && bucket.txBytes <= 0) continue
                     val agg = perUid.getOrPut(bucket.uid) { LongArray(2) }
                     agg[0] += bucket.rxBytes
                     agg[1] += bucket.txBytes
                 }
-                stats.close()
-            } catch (_: Exception) {
+                Log.i(TAG, "per-app $label: $buckets buckets, ${perUid.size} uids cumulative")
+            } catch (e: Exception) {
                 // This transport may not exist on the device — the others still count.
+                Log.w(TAG, "per-app $label failed: $e")
+            } finally {
+                try {
+                    stats?.close()
+                } catch (_: Exception) {
+                }
+            }
+        }
+    } catch (e: Exception) {
+        // Network accounting unavailable on this build.
+        Log.w(TAG, "network accounting unavailable: $e")
+    }
+    Log.i(TAG, "per-app query done: ${perUid.size} uids with traffic")
+    perUid
+}
+
+/**
+ * Builds one template per transport, avoiding double counting:
+ *  - API 33+: the (hidden) [NetworkTemplate.Builder] with the public
+ *    TEMPLATE_* constants — the forward-compatible path;
+ *  - older builds: the legacy no-arg static factories, each optional so a
+ *    missing one (e.g. buildTemplateMobileWildcard only exists since S)
+ *    degrades to "this transport is skipped" instead of "no data at all".
+ */
+private fun buildNetTemplates(templateClass: Class<*>): List<Pair<String, Any>> {
+    val out = mutableListOf<Pair<String, Any>>()
+
+    // Strategy A — Builder(int) + TEMPLATE_* constants (API 33+).
+    try {
+        val builderClass = Class.forName("android.net.NetworkTemplate\$Builder")
+        val ctor = builderClass.getConstructor(Int::class.javaPrimitiveType)
+        val build = builderClass.getMethod("build")
+        for (constName in listOf("TEMPLATE_WIFI", "TEMPLATE_ETHERNET", "TEMPLATE_MOBILE", "TEMPLATE_CARRIER")) {
+            try {
+                val const = templateClass.getField(constName).getInt(null)
+                val label = constName.removePrefix("TEMPLATE_").lowercase(Locale.US)
+                out += label to build.invoke(ctor.newInstance(const))
+            } catch (_: Exception) {
             }
         }
     } catch (_: Exception) {
-        // Network accounting unavailable on this build.
     }
-    perUid
+
+    // Strategy B — legacy no-arg static factories (pre-33 fallback).
+    if (out.isEmpty()) {
+        for (name in listOf("buildTemplateWifi", "buildTemplateEthernet", "buildTemplateMobileWildcard")) {
+            try {
+                val label = name.removePrefix("buildTemplate").lowercase(Locale.US)
+                out += label to templateClass.getMethod(name).invoke(null)
+            } catch (_: Exception) {
+            }
+        }
+        // Ancient builds: buildTemplateMobile(null) == mobile wildcard.
+        try {
+            val m = templateClass.getMethod("buildTemplateMobile", String::class.java)
+            out += "mobile" to m.invoke(null, arrayOf<Any?>(null))
+        } catch (_: Exception) {
+        }
+    }
+    return out
 }
 
 private fun toAppUsages(
@@ -225,7 +356,24 @@ fun NetScreen(modifier: Modifier = Modifier) {
 
     var usageGranted by remember { mutableStateOf(hasUsageAccess(context)) }
     var periodDays by rememberSaveable { mutableIntStateOf(1) }
+    var refreshTick by remember { mutableIntStateOf(0) }
     var apps by remember { mutableStateOf<List<AppNetUsage>>(emptyList()) }
+
+    // The appop can only be granted while this screen is paused (either in
+    // Settings -> Usage access, or via the su/Shizuku prompt which suspends
+    // the activity), so re-check on every resume and refresh the totals.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val granted = hasUsageAccess(context)
+                if (granted != usageGranted) usageGranted = granted
+                refreshTick++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LaunchedEffect(Unit) {
         ifaces = try {
@@ -258,8 +406,8 @@ fun NetScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    // Per-app totals for the selected period.
-    LaunchedEffect(periodDays, usageGranted) {
+    // Per-app totals for the selected period (also re-run after resume / grant).
+    LaunchedEffect(periodDays, usageGranted, refreshTick) {
         if (!usageGranted) {
             apps = emptyList()
             return@LaunchedEffect
