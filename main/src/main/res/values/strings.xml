@@ -171,6 +171,9 @@
 
     <string name="net">NET</string>
     <string name="bat">BAT</string>
+    <string name="net_screen_title">Network</string>
+    <string name="battery_screen_title">Battery</string>
+    <string name="screen_rebuilt_notice">This screen is being rebuilt natively in this fork and will return in an upcoming update.</string>
     <string name="not_implemented">This feature is not implemented</string>
 
     <!-- CPU Screen -->
