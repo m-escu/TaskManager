@@ -81,6 +81,10 @@ private const val MAX_APP_ROWS = 50
 private const val SU_TIMEOUT_SECONDS = 15L
 private const val TAG = "NetScreen"
 
+/** One-line summary of the last per-app query, surfaced when the list is empty. */
+var lastPerAppDiag: String? = null
+    private set
+
 /** One app (or uid) row of the per-app traffic list. */
 data class AppNetUsage(
     val uid: Int,
@@ -216,28 +220,36 @@ suspend fun queryPerAppUsage(
     val nsm = context.getSystemService(Context.NETWORK_STATS_SERVICE) as? NetworkStatsManager
     if (nsm == null) {
         Log.w(TAG, "per-app query skipped: NetworkStatsManager unavailable")
+        lastPerAppDiag = "NetworkStatsManager unavailable"
         return@withContext null
     }
     val end = System.currentTimeMillis()
     val perUid = HashMap<Int, LongArray>(256)
+    val diag = StringBuilder()
 
     // NetworkTemplate is not part of the public SDK stubs on any compile
-    // version, so templates + querySummary are invoked reflectively. Every
-    // transport is resolved and queried INDEPENDENTLY: a missing builder for
-    // one transport (e.g. the no-arg buildTemplateMobile() does not exist on
-    // S+) must never abort the others.
+    // version, so templates + querySummary are invoked reflectively. The
+    // public querySummary signature is (NetworkTemplate, String subscriberId,
+    // long, long) — null subscriberId = "all subscriptions", which is what
+    // usage access permits. Every transport is resolved and queried
+    // INDEPENDENTLY: a missing builder for one transport (e.g. the no-arg
+    // buildTemplateMobile() does not exist on S+) must never abort the others.
     try {
         val templateClass = Class.forName("android.net.NetworkTemplate")
         val querySummary = nsm.javaClass.getMethod(
             "querySummary",
             templateClass,
+            String::class.java,
             Long::class.javaPrimitiveType,
             Long::class.javaPrimitiveType,
         )
-        for ((label, template) in buildNetTemplates(templateClass)) {
+        val templates = buildNetTemplates(templateClass)
+        diag.append("templates=").append(templates.size)
+        if (templates.isEmpty()) diag.append(" (reflection blocked?)")
+        for ((label, template) in templates) {
             var stats: NetworkStats? = null
             try {
-                stats = querySummary.invoke(nsm, template, sinceMs, end) as NetworkStats
+                stats = querySummary.invoke(nsm, template, null, sinceMs, end) as NetworkStats
                 val bucket = NetworkStats.Bucket()
                 var buckets = 0
                 while (stats.hasNextBucket()) {
@@ -248,9 +260,11 @@ suspend fun queryPerAppUsage(
                     agg[0] += bucket.rxBytes
                     agg[1] += bucket.txBytes
                 }
+                diag.append("; ").append(label).append(":").append(buckets).append("b")
                 Log.i(TAG, "per-app $label: $buckets buckets, ${perUid.size} uids cumulative")
             } catch (e: Exception) {
                 // This transport may not exist on the device — the others still count.
+                diag.append("; ").append(label).append(":err(").append(e.javaClass.simpleName).append(")")
                 Log.w(TAG, "per-app $label failed: $e")
             } finally {
                 try {
@@ -261,9 +275,11 @@ suspend fun queryPerAppUsage(
         }
     } catch (e: Exception) {
         // Network accounting unavailable on this build.
+        diag.append("; fatal(").append(e.javaClass.simpleName).append(")")
         Log.w(TAG, "network accounting unavailable: $e")
     }
-    Log.i(TAG, "per-app query done: ${perUid.size} uids with traffic")
+    lastPerAppDiag = diag.toString().take(240)
+    Log.i(TAG, "per-app query done: ${perUid.size} uids | $lastPerAppDiag")
     perUid
 }
 
@@ -548,6 +564,13 @@ fun NetScreen(modifier: Modifier = Modifier) {
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            lastPerAppDiag?.takeIf { it.isNotBlank() }?.let { diag ->
+                                Text(
+                                    text = stringResource(strings.net_diag_prefix, diag),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         } else {
                             apps.take(MAX_APP_ROWS).forEach { usage ->
                                 AppNetRow(usage)

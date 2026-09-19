@@ -254,6 +254,8 @@
     <string name="batt_last_7d">7 天</string>
     <string name="batt_last_30d">30 天</string>
     <string name="batt_no_data_yet">数据尚不足。本页打开期间会持续记录样本。</string>
+    <string name="batt_chart_level">电量（%）</string>
+    <string name="batt_chart_current">电流（mA）</string>
     <string name="batt_unavailable">电池信息不可用（无电池、旧版守护进程或设备不支持）。</string>
     <string name="batt_recording">历史记录</string>
     <string name="batt_recording_desc">本页打开期间每分钟保存一个样本。历史保留 30 天，绝不上传。</string>
@@ -268,5 +270,6 @@
     <string name="net_open_settings">打开设置</string>
     <string name="net_grant_failed">无法自动授予使用情况访问权限</string>
     <string name="net_no_data">该时段未记录到流量。</string>
+    <string name="net_diag_prefix">诊断：%1$s</string>
     <string name="net_showing_top">仅显示前 %1$d 个应用。</string>
 </resources>

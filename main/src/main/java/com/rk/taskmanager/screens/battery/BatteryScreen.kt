@@ -181,6 +181,12 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
     Column(modifier.verticalScroll(rememberScrollState())) {
         val currentLive = live
 
+        Text(
+            text = stringResource(strings.batt_chart_level),
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+
         UsageChart(
             modelProducer = capacityProducer,
             lineColors = listOf(MaterialTheme.colorScheme.primary),
@@ -222,6 +228,11 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
         // |current| over the selected period; the vendor sign convention is
         // not normalized by the daemon, so the magnitude is what's plottable.
         if (historyPoints >= 2) {
+            Text(
+                text = stringResource(strings.batt_chart_current),
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
             UsageChart(
                 modelProducer = currentProducer,
                 lineColors = listOf(MaterialTheme.colorScheme.tertiary),
