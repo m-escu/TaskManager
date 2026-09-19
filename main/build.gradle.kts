@@ -76,8 +76,6 @@ dependencies {
     implementation(libs.material3)
     implementation(project(":taskmanagerd"))
     implementation(libs.androidx.material.icons.extended)
-    implementation(libs.coil.compose)
-    implementation(libs.coil.svg)
 
 
     implementation(libs.androidx.room.runtime)
