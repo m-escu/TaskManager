@@ -36,11 +36,16 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
+      # ubuntu-latest runners ship with the Android SDK preinstalled at
+      # $ANDROID_HOME. Accept licenses, then install what the build needs.
+      # Keep the NDK in sync with `ndk` in gradle/libs.versions.toml. The NDK
+      # release string is embedded in libtaskmanagerd.so, so building with a
+      # different NDK changes the native libraries (reproducible builds).
       # compileSdk release(37) { minorApiLevel = 0 } needs platforms;android-37.0,
-      # which is not preinstalled on runners. Keep NDK pinned to libs.versions.toml.
+      # which is not preinstalled either.
+      - name: Accept SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
       - name: Cache NDK
         uses: actions/cache@v4
         with:
@@ -55,6 +60,7 @@ jobs:
             echo "::error::sdkmanager not found under $ANDROID_HOME"
             exit 1
           fi
+          echo "Using $SDKMANAGER"
           yes | "$SDKMANAGER" --install "ndk;$NDK_VERSION" "platforms;android-37.0" > /dev/null
           "$SDKMANAGER" --list_installed | grep -E "ndk;|platforms;android-37.0"
 
