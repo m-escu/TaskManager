@@ -39,14 +39,27 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      # compileSdk release(37) { minorApiLevel = 0 } needs platforms;android-37.0,
+      # which is not preinstalled on runners. Keep NDK pinned to libs.versions.toml.
       - name: Cache NDK
         uses: actions/cache@v4
         with:
           path: /usr/local/lib/android/sdk/ndk/28.0.13004108
           key: ndk-28.0.13004108
 
-      - name: Install NDK
-        run: sdkmanager --install "ndk;28.0.13004108" > /dev/null
+      - name: Install pinned build dependencies
+        run: |
+          NDK_VERSION=$(sed -n 's/^ndk = "\(.*\)"/\1/p' gradle/libs.versions.toml)
+          SDKMANAGER=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1)
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::sdkmanager not found under $ANDROID_HOME"
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --install "ndk;$NDK_VERSION" "platforms;android-37.0" > /dev/null
+          "$SDKMANAGER" --list_installed | grep -E "ndk;|platforms;android-37.0"
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
 
       - name: Set up Gradle caching
         uses: gradle/actions/setup-gradle@v4
