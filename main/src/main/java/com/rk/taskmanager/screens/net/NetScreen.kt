@@ -175,14 +175,14 @@ suspend fun grantUsageAccessViaRoot(context: Context): Boolean = withContext(Dis
         "PACKAGE_USAGE_STATS",
     )
 
-    val shizukuCmd: (String) -> ExecAttempt = { op ->
+    val shizukuCmd: suspend (String) -> ExecAttempt = { op ->
         shizukuRun(arrayOf<String?>("cmd", "appops", "set", "--user", "0", pkg, op, "allow"))
     }
-    val suCmd: (String) -> ExecAttempt = { op ->
+    val suCmd: suspend (String) -> ExecAttempt = { op ->
         suRun("cmd appops set --user 0 $pkg $op allow")
     }
 
-    val attempts: List<(String) -> ExecAttempt> = when (Settings.workingMode) {
+    val attempts: List<suspend (String) -> ExecAttempt> = when (Settings.workingMode) {
         WorkingMode.SHIZUKU.id -> listOf(shizukuCmd, suCmd)
         else -> listOf(suCmd, shizukuCmd)
     }
@@ -306,7 +306,7 @@ private fun buildNetTemplates(templateClass: Class<*>): List<Pair<String, Any>> 
         // Ancient builds: buildTemplateMobile(null) == mobile wildcard.
         try {
             val m = templateClass.getMethod("buildTemplateMobile", String::class.java)
-            out += "mobile" to m.invoke(null, arrayOf<Any?>(null))
+            out += "mobile" to m.invoke(null, *arrayOf<Any?>(null))
         } catch (_: Exception) {
         }
     }
