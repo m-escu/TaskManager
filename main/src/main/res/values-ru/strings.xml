@@ -188,4 +188,33 @@
     <string name="please_wait">Пожалуйста, подождите</string>
     <string name="ms_unit">%1$d мс</string>
 
+    <!-- About / attribution -->
+    <string name="fork_maintainer">Владелец форка</string>
+    <string name="original_author">Автор оригинала</string>
+    <string name="project">Проект</string>
+    <string name="source_code">Исходный код</string>
+
+    <!-- Kill behavior -->
+    <string name="kill_action">Действие по умолчанию при остановке</string>
+    <string name="kill_action_desc">Как кнопка остановки завершает процессы</string>
+    <string name="kill_action_ask">Спрашивать каждый раз</string>
+    <string name="kill_action_terminate">Завершить</string>
+    <string name="kill_action_terminate_desc">Сначала SIGTERM, затем принудительное завершение по истечении периода ожидания</string>
+    <string name="kill_action_force">Принудительно завершить</string>
+    <string name="kill_action_force_desc">Немедленный SIGKILL</string>
+    <string name="grace_period">Период ожидания перед завершением</string>
+    <string name="grace_period_desc">Сколько ждать после SIGTERM перед принудительным завершением</string>
+    <string name="force_kill">Принудительно завершить</string>
+    <string name="kill_failed">Не удалось остановить процесс</string>
+
+    <!-- Daemon status / compatibility -->
+    <string name="daemon_status">Статус</string>
+    <string name="daemon_status_connected">Подключено</string>
+    <string name="daemon_status_disconnected">Отключено</string>
+    <string name="daemon_version">Версия демона</string>
+    <string name="daemon_protocol">Версия протокола</string>
+    <string name="daemon_caps">Возможности</string>
+    <string name="legacy_daemon_title">Обнаружен устаревший демон</string>
+    <string name="legacy_daemon_msg">Запущенный демон использует старый протокол (v%1$d). Некоторые функции недоступны. Полностью закройте приложение и запустите демон заново, чтобы обновить его.</string>
+
 </resources>

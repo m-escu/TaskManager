@@ -69,26 +69,22 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import com.rk.components.SettingsToggle
 import com.rk.components.TextCard
-import com.rk.components.XedDialog
 import com.rk.components.compose.preferences.base.PreferenceGroup
 import com.rk.components.compose.preferences.base.PreferenceTemplate
 import com.rk.taskmanager.ProcessUiModel
 import com.rk.taskmanager.ProcessViewModel
 import com.rk.taskmanager.TaskManager
-import com.rk.taskmanager.daemon.daemon_messages
-import com.rk.taskmanager.daemon.send_daemon_messages
+import com.rk.taskmanager.daemon.DaemonServer
+import com.rk.taskmanager.daemon.KillAction
 import com.rk.commons.getString
 import com.rk.taskmanager.settings.SettingsRoutes
 import com.rk.commons.strings
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -97,7 +93,6 @@ import java.text.DateFormat
 import java.util.Date
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
-import kotlin.time.Duration.Companion.milliseconds
 
 fun elapsedFromStartTime(startTimeTicks: Long): String {
     val processStartMillis = startTimeToMillis(startTimeTicks)
@@ -187,50 +182,6 @@ fun getAppIconBitmap(context: Context, packageName: String): Bitmap? {
     return drawableTobitMap(drawable)
 }
 
-
-suspend fun killProc(proc: ProcessViewModel.Process): Boolean {
-    var killResult = false
-
-    val isApk = isAppInstalled(TaskManager.requireContext(), proc.cmdLine)
-
-
-    killResult = withContext(Dispatchers.IO) {
-        runCatching {
-            withTimeout(3000L.milliseconds) {
-                val resultDeferred = async {
-                    daemon_messages.first { message ->
-                        try {
-                            val json = JSONObject(message)
-                            json.optString("type") == "KILL_RESULT"
-                        } catch (e: Exception) {
-                            false
-                        }
-                    }.let { JSONObject(it).optBoolean("success") }
-                }
-
-                // Send kill command
-                val cmd = JSONObject().apply {
-                    if (isApk) {
-                        put("cmd", "FORCE_STOP")
-                        put("pkg", proc.cmdLine)
-                    } else {
-                        put("cmd", "KILL")
-                        put("pid", proc.pid)
-                    }
-                }
-                send_daemon_messages.emit(cmd.toString())
-
-                // Wait for result
-                resultDeferred.await()
-            }
-        }.onFailure {
-            it.printStackTrace()
-        }.getOrDefault(false)
-    }
-
-    com.rk.commons.settings.Settings.kills++
-    return killResult
-}
 
 val procByPid = mutableStateMapOf<Int, WeakReference<ProcessUiModel?>?>()
 
@@ -393,24 +344,20 @@ fun ProcessInfo(
                     TextCard(text = stringResource(strings.user), description = username.value)
 
 
-                    LaunchedEffect(Unit) {
-                        daemon_messages.collect { message ->
-                            try {
-                                val json = JSONObject(message)
-                                if (json.optString("type") == "PROCESS_CPU_USAGE") {
-                                    cpuUsage.intValue = json.optInt("usage", -1)
-                                }
-                            } catch (e: Exception) {}
-                        }
-                    }
-
+                    // Request-id correlated per-process CPU polling: only the
+                    // response carrying our id updates this screen (no
+                    // cross-talk with other concurrent viewers).
                     LaunchedEffect(proc) {
                         while (isActive) {
-                            val cmd = JSONObject().apply {
-                                put("cmd", "PING_PID_CPU")
-                                put("pid", proc!!.proc.pid)
+                            val response = DaemonServer.request(
+                                JSONObject()
+                                    .put("cmd", "PING_PID_CPU")
+                                    .put("pid", proc!!.proc.pid),
+                                timeoutMs = 2_000,
+                            )
+                            if (response != null) {
+                                cpuUsage.intValue = response.optInt("usage", -1)
                             }
-                            send_daemon_messages.emit(cmd.toString())
                             delay(1000)
                         }
                     }
@@ -607,76 +554,29 @@ fun ProcessInfo(
     }
 
     if (showKillDialog != null) {
-        if (com.rk.commons.settings.Settings.confirmkill){
-            XedDialog(
-                onDismissRequest = { showKillDialog = null }
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-
-                    Text(
-                        text = stringResource(strings.terminate),
-                        style = MaterialTheme.typography.titleMedium
-                    )
-
-                    Spacer(modifier = Modifier.padding(vertical = 8.dp))
-
-                    Text(
-                        text = stringResource(strings.terminate_confirm, showKillDialog?.name ?: "")
-                    )
-
-                    Spacer(modifier = Modifier.padding(vertical = 16.dp))
-
-                    Row(
-                        horizontalArrangement = Arrangement.End,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-
-                        TextButton(onClick = {
-                            showKillDialog = null
-                        }) {
-                            Text(stringResource(strings.cancel))
-                        }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        TextButton(onClick = {
-
-
-                            val dialog = showKillDialog
-
-                            viewModel.viewModelScope.launch {
-                                dialog?.killing?.value = true
-                                dialog?.killed?.value = killProc(dialog?.proc!!)
-                                delay(300)
-                                dialog?.killing?.value = false
-                            }
-
-                            showKillDialog = null
-
-
-                        }) {
-                            Text(
-                                text = stringResource(strings.kill),
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
+        if (com.rk.commons.settings.Settings.confirmkill) {
+            KillConfirmDialog(
+                processName = showKillDialog?.name ?: "",
+                onDismiss = { showKillDialog = null },
+                onConfirm = { action ->
+                    val target = showKillDialog
+                    showKillDialog = null
+                    viewModel.viewModelScope.launch {
+                        target?.killWithUiState(action)
                     }
-                }
-            }
-        }else{
+                },
+            )
+        } else {
             LaunchedEffect(Unit) {
-                val dialog = showKillDialog
-                viewModel.viewModelScope.launch {
-                    dialog?.killing?.value = true
-                    dialog?.killed?.value = killProc(dialog?.proc!!)
-                    delay(300)
-                    dialog?.killing?.value = false
-                }
-
+                val target = showKillDialog
                 showKillDialog = null
+                viewModel.viewModelScope.launch {
+                    target?.killWithUiState(
+                        KillAction.fromId(com.rk.commons.settings.Settings.defaultKillAction).resolve()
+                    )
+                }
             }
         }
-
     }
 }
 

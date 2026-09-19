@@ -219,4 +219,33 @@
 
     <string name="task_manager_pro_uppercase">TASK MANAGER PRO</string>
 
+    <!-- About / attribution -->
+    <string name="fork_maintainer">Fork maintainer</string>
+    <string name="original_author">Original author</string>
+    <string name="project">Project</string>
+    <string name="source_code">Source code</string>
+
+    <!-- Kill behavior -->
+    <string name="kill_action">Default kill action</string>
+    <string name="kill_action_desc">How the Kill button stops processes</string>
+    <string name="kill_action_ask">Ask every time</string>
+    <string name="kill_action_terminate">Terminate</string>
+    <string name="kill_action_terminate_desc">SIGTERM first, force kill after the grace period</string>
+    <string name="kill_action_force">Force kill</string>
+    <string name="kill_action_force_desc">SIGKILL immediately</string>
+    <string name="grace_period">Termination grace period</string>
+    <string name="grace_period_desc">Wait time after SIGTERM before force killing</string>
+    <string name="force_kill">Force kill</string>
+    <string name="kill_failed">Failed to stop process</string>
+
+    <!-- Daemon status / compatibility -->
+    <string name="daemon_status">Status</string>
+    <string name="daemon_status_connected">Connected</string>
+    <string name="daemon_status_disconnected">Disconnected</string>
+    <string name="daemon_version">Daemon version</string>
+    <string name="daemon_protocol">Protocol version</string>
+    <string name="daemon_caps">Capabilities</string>
+    <string name="legacy_daemon_title">Legacy daemon detected</string>
+    <string name="legacy_daemon_msg">The running daemon speaks an older protocol (v%1$d). Some features are unavailable. Fully close the app and start the daemon again to update it.</string>
+
 </resources>

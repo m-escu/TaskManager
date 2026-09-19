@@ -198,4 +198,33 @@
     <!-- Misc -->
     <string name="please_wait">请稍等</string>
     <string name="ms_unit">%1$dms</string>
+
+    <!-- About / attribution -->
+    <string name="fork_maintainer">Fork 维护者</string>
+    <string name="original_author">原作者</string>
+    <string name="project">项目</string>
+    <string name="source_code">源代码</string>
+
+    <!-- Kill behavior -->
+    <string name="kill_action">默认停止方式</string>
+    <string name="kill_action_desc">“停止”按钮如何结束进程</string>
+    <string name="kill_action_ask">每次询问</string>
+    <string name="kill_action_terminate">正常终止</string>
+    <string name="kill_action_terminate_desc">先发送 SIGTERM，超过等待期后强制结束</string>
+    <string name="kill_action_force">强制结束</string>
+    <string name="kill_action_force_desc">立即发送 SIGKILL</string>
+    <string name="grace_period">终止等待期</string>
+    <string name="grace_period_desc">SIGTERM 之后等待多久再强制结束</string>
+    <string name="force_kill">强制结束</string>
+    <string name="kill_failed">停止进程失败</string>
+
+    <!-- Daemon status / compatibility -->
+    <string name="daemon_status">状态</string>
+    <string name="daemon_status_connected">已连接</string>
+    <string name="daemon_status_disconnected">未连接</string>
+    <string name="daemon_version">守护进程版本</string>
+    <string name="daemon_protocol">协议版本</string>
+    <string name="daemon_caps">支持的能力</string>
+    <string name="legacy_daemon_title">检测到旧版守护进程</string>
+    <string name="legacy_daemon_msg">正在运行的守护进程使用旧协议（v%1$d），部分功能不可用。请完全关闭应用并重新启动守护进程以更新。</string>
 </resources>

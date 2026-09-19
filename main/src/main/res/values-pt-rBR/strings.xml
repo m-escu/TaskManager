@@ -199,4 +199,33 @@
     <string name="please_wait">Por favor, aguarde</string>
     <string name="ms_unit">%1$dms</string>
 
+    <!-- About / attribution -->
+    <string name="fork_maintainer">Mantenedor do fork</string>
+    <string name="original_author">Autor original</string>
+    <string name="project">Projeto</string>
+    <string name="source_code">Código-fonte</string>
+
+    <!-- Kill behavior -->
+    <string name="kill_action">Ação de encerramento padrão</string>
+    <string name="kill_action_desc">Como o botão Encerrar interrompe os processos</string>
+    <string name="kill_action_ask">Perguntar sempre</string>
+    <string name="kill_action_terminate">Encerrar</string>
+    <string name="kill_action_terminate_desc">SIGTERM primeiro, encerramento forçado após o período de espera</string>
+    <string name="kill_action_force">Forçar encerramento</string>
+    <string name="kill_action_force_desc">SIGKILL imediato</string>
+    <string name="grace_period">Período de espera para encerramento</string>
+    <string name="grace_period_desc">Tempo de espera após o SIGTERM antes de forçar o encerramento</string>
+    <string name="force_kill">Forçar encerramento</string>
+    <string name="kill_failed">Falha ao interromper o processo</string>
+
+    <!-- Daemon status / compatibility -->
+    <string name="daemon_status">Status</string>
+    <string name="daemon_status_connected">Conectado</string>
+    <string name="daemon_status_disconnected">Desconectado</string>
+    <string name="daemon_version">Versão do daemon</string>
+    <string name="daemon_protocol">Versão do protocolo</string>
+    <string name="daemon_caps">Recursos suportados</string>
+    <string name="legacy_daemon_title">Daemon antigo detectado</string>
+    <string name="legacy_daemon_msg">O daemon em execução usa um protocolo antigo (v%1$d). Alguns recursos ficam indisponíveis. Feche totalmente o aplicativo e inicie o daemon novamente para atualizá-lo.</string>
+
 </resources>

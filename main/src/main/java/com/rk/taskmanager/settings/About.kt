@@ -34,6 +34,10 @@ import com.rk.taskmanager.BuildConfig
 import com.rk.commons.strings
 import com.rk.taskmanager.R
 
+private const val FORK_REPO_URL = "https://github.com/m-escu/TaskManager"
+private const val FORK_AUTHOR_URL = "https://github.com/m-escu"
+private const val UPSTREAM_AUTHOR_URL = "https://github.com/RohitKushvaha01"
+
 @Composable
 fun About(modifier: Modifier = Modifier) {
     val packageInfo = LocalContext.current.packageManager.getPackageInfo(LocalContext.current.packageName, 0)
@@ -43,42 +47,23 @@ fun About(modifier: Modifier = Modifier) {
 
     PreferenceLayout(label = stringResource(strings.about), backArrowVisible = true) {
         PreferenceGroup(heading = stringResource(strings.developer)) {
-            SettingsToggle(
+            contributorRow(
+                label = "m-escu",
+                description = stringResource(strings.fork_maintainer),
+                url = FORK_AUTHOR_URL,
+            )
+            contributorRow(
                 label = "RohitKushvaha01",
-                description = stringResource(strings.view_github),
-                default = false,
-                sideEffect = {
-                    val url = "https://github.com/RohitKushvaha01"
-                    val intent = Intent(Intent.ACTION_VIEW).apply { data = Uri.parse(url) }
-                    runCatching { context.startActivity(intent) }
-                },
-                showSwitch = false,
-                startWidget = {
-                    // Fully offline: local vector avatar instead of a network image.
-                    // The fork has no INTERNET permission by design.
-                    Box(
-                        modifier =
-                            Modifier.padding(start = 16.dp)
-                                .size(26.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.github),
-                            contentDescription = "GitHub",
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
-                endWidget = {
-                    Icon(
-                        modifier = Modifier.padding(16.dp),
-                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                        contentDescription = null,
-                    )
-                },
+                description = stringResource(strings.original_author),
+                url = UPSTREAM_AUTHOR_URL,
+            )
+        }
+
+        PreferenceGroup(heading = stringResource(strings.project)) {
+            contributorRow(
+                label = stringResource(strings.source_code),
+                description = FORK_REPO_URL.removePrefix("https://"),
+                url = FORK_REPO_URL,
             )
         }
 
@@ -142,6 +127,50 @@ fun About(modifier: Modifier = Modifier) {
 
         }
     }
+}
+
+/**
+ * A tappable row that opens a GitHub profile/repo in the browser. Fully
+ * offline in the app itself: the avatar is a local vector (this fork has no
+ * INTERNET permission by design), only the external browser goes online.
+ */
+@Composable
+private fun contributorRow(label: String, description: String, url: String) {
+    val context = LocalContext.current
+    SettingsToggle(
+        label = label,
+        description = description,
+        default = false,
+        sideEffect = {
+            val intent = Intent(Intent.ACTION_VIEW).apply { data = Uri.parse(url) }
+            runCatching { context.startActivity(intent) }
+        },
+        showSwitch = false,
+        startWidget = {
+            Box(
+                modifier =
+                    Modifier.padding(start = 16.dp)
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.github),
+                    contentDescription = "GitHub",
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        endWidget = {
+            Icon(
+                modifier = Modifier.padding(16.dp),
+                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = null,
+            )
+        },
+    )
 }
 
 

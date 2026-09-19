@@ -63,4 +63,33 @@
     <string name="root">Root</string>
     <string name="shizuku">Shizuku</string>
 
+    <!-- About / attribution -->
+    <string name="fork_maintainer">Fork geliştiricisi</string>
+    <string name="original_author">Orijinal yazar</string>
+    <string name="project">Proje</string>
+    <string name="source_code">Kaynak kod</string>
+
+    <!-- Kill behavior -->
+    <string name="kill_action">Varsayılan sonlandırma eylemi</string>
+    <string name="kill_action_desc">Sonlandır düğmesi süreçleri nasıl durdurur</string>
+    <string name="kill_action_ask">Her seferinde sor</string>
+    <string name="kill_action_terminate">Sonlandır</string>
+    <string name="kill_action_terminate_desc">Önce SIGTERM, bekleme süresinden sonra zorla sonlandır</string>
+    <string name="kill_action_force">Zorla sonlandır</string>
+    <string name="kill_action_force_desc">Anında SIGKILL</string>
+    <string name="grace_period">Sonlandırma bekleme süresi</string>
+    <string name="grace_period_desc">SIGTERM sonrası zorla sonlandırmadan önce beklenecek süre</string>
+    <string name="force_kill">Zorla sonlandır</string>
+    <string name="kill_failed">Süreç durdurulamadı</string>
+
+    <!-- Daemon status / compatibility -->
+    <string name="daemon_status">Durum</string>
+    <string name="daemon_status_connected">Bağlı</string>
+    <string name="daemon_status_disconnected">Bağlı değil</string>
+    <string name="daemon_version">Daemon sürümü</string>
+    <string name="daemon_protocol">Protokol sürümü</string>
+    <string name="daemon_caps">Yetenekler</string>
+    <string name="legacy_daemon_title">Eski sürüm daemon algılandı</string>
+    <string name="legacy_daemon_msg">Çalışan daemon eski bir protokol kullanıyor (v%1$d). Bazı özellikler kullanılamaz. Güncellemek için uygulamayı tamamen kapatıp daemonı yeniden başlatın.</string>
+
 </resources>

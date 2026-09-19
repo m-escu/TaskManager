@@ -2,19 +2,28 @@ package com.rk.taskmanager.screens
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -37,6 +46,8 @@ import com.rk.taskmanager.MainActivity
 import com.rk.taskmanager.ProcessViewModel
 import com.rk.taskmanager.components.ProcessSearchBar
 import com.rk.taskmanager.daemon.DaemonResult
+import com.rk.taskmanager.daemon.daemonProtocolVersion
+import com.rk.taskmanager.daemon.isLegacyDaemon
 import com.rk.taskmanager.daemon.isConnected
 import com.rk.taskmanager.daemon.startDaemon
 import com.rk.taskmanager.screens.gpu.GpuViewModel
@@ -57,6 +68,8 @@ var showSort = mutableStateOf(false)
 fun MainScreen(modifier: Modifier = Modifier, navController: NavController, viewModel: ProcessViewModel,gpuViewModel: GpuViewModel) {
 
     if (isConnected) {
+        var legacyBannerDismissed by rememberSaveable { mutableStateOf(false) }
+
         Scaffold(
             modifier = modifier.fillMaxSize(),
             topBar = {
@@ -160,6 +173,19 @@ fun MainScreen(modifier: Modifier = Modifier, navController: NavController, view
                         Processes(viewModel = viewModel, navController = navController)
                     }
                 }
+
+                // A v1 daemon can only appear when a stale daemon binary was
+                // left running by an older app version. Warn instead of
+                // failing silently later.
+                if (isLegacyDaemon && !legacyBannerDismissed) {
+                    LegacyDaemonBanner(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        onDismiss = { legacyBannerDismissed = true },
+                    )
+                }
             }
 
         }
@@ -198,6 +224,47 @@ fun MainScreen(modifier: Modifier = Modifier, navController: NavController, view
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+
+/** Warning shown when the connected daemon speaks an older protocol than the app. */
+@Composable
+private fun LegacyDaemonBanner(modifier: Modifier = Modifier, onDismiss: () -> Unit) {
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        tonalElevation = 2.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Warning,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(strings.legacy_daemon_title),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    text = stringResource(strings.legacy_daemon_msg, daemonProtocolVersion),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(
+                    imageVector = Icons.Outlined.Close,
+                    contentDescription = stringResource(strings.cancel),
+                )
             }
         }
     }

@@ -25,6 +25,12 @@ object Settings {
     var useImperialUnits by BooleanPref(key = "use_imperial_units", default = false)
     var batteryCurrentUnit by IntPref(key = "battery_current_unit", default = BatteryCurrentUnit.UNKNOWN)
 
+    /** How the Kill button stops processes: 0 = ask, 1 = terminate (SIGTERM->SIGKILL), 2 = force (SIGKILL). */
+    var defaultKillAction by IntPref(key = "default_kill_action", default = 0)
+
+    /** Grace period (ms) after SIGTERM before the daemon escalates to SIGKILL. Daemon clamps to 200..10000. */
+    var killGraceMs by IntPref(key = "kill_grace_ms", default = 3000)
+
     var pinnedProcesses: Set<String>
         get() = Preference.getString("pinned_processes", "").split(",").filter { it.isNotEmpty() }.toSet()
         set(value) = Preference.setString("pinned_processes", value.joinToString(","))

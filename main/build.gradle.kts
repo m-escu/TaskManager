@@ -95,6 +95,9 @@ dependencies {
     implementation(libs.vico.compose)
 
     testImplementation(libs.junit)
+    // Real org.json implementation for JVM unit tests (android.jar only
+    // ships stubs that throw "not mocked").
+    testImplementation("org.json:json:20240303")
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
 }

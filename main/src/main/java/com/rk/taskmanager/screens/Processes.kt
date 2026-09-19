@@ -61,6 +61,7 @@ import com.rk.taskmanager.ProcessUiModel
 import com.rk.taskmanager.ProcessViewModel
 import com.rk.taskmanager.R
 import com.rk.commons.settings.Settings
+import com.rk.taskmanager.daemon.KillAction
 import com.rk.taskmanager.settings.SettingsRoutes
 import com.rk.taskmanager.settings.pullToRefresh_procs
 import com.rk.commons.strings
@@ -390,12 +391,6 @@ fun ProcessItem(
                         modifier = Modifier.padding(end = 7.dp),
                         enabled = !uiProc.killed.value,
                         onClick = {
-//                            viewModel.viewModelScope.launch {
-//                                uiProc.killing.value = true
-//                                uiProc.killed.value = killProc(uiProc.proc)
-//                                delay(300)
-//                                uiProc.killing.value = false
-//                            }
 
 
                             showKillDialog = uiProc
@@ -415,73 +410,27 @@ fun ProcessItem(
     )
 
     if (showKillDialog != null) {
-        if (Settings.confirmkill){
-            XedDialog(
-                onDismissRequest = { showKillDialog = null }
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-
-                    Text(
-                        text = stringResource(strings.terminate),
-                        style = MaterialTheme.typography.titleMedium
-                    )
-
-                    Spacer(modifier = Modifier.padding(vertical = 8.dp))
-
-                    Text(
-                        text = stringResource(strings.terminate_confirm, showKillDialog?.name ?: "")
-                    )
-
-                    Spacer(modifier = Modifier.padding(vertical = 16.dp))
-
-                    Row(
-                        horizontalArrangement = Arrangement.End,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-
-                        TextButton(onClick = {
-                            showKillDialog = null
-                        }) {
-                            Text(stringResource(strings.cancel))
-                        }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        TextButton(onClick = {
-
-
-                            val dialog = showKillDialog
-
-                            viewModel.viewModelScope.launch {
-                                dialog?.killing?.value = true
-                                dialog?.killed?.value = killProc(dialog?.proc!!)
-                                delay(300)
-                                dialog?.killing?.value = false
-                            }
-
-                            showKillDialog = null
-
-
-                        }) {
-                            Text(
-                                text = stringResource(strings.kill),
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
+        if (Settings.confirmkill) {
+            KillConfirmDialog(
+                processName = showKillDialog?.name ?: "",
+                onDismiss = { showKillDialog = null },
+                onConfirm = { action ->
+                    val target = showKillDialog
+                    showKillDialog = null
+                    viewModel.viewModelScope.launch {
+                        target?.killWithUiState(action)
                     }
-                }
-            }
-        }else{
+                },
+            )
+        } else {
             LaunchedEffect(Unit) {
-                val dialog = showKillDialog
-                viewModel.viewModelScope.launch {
-                    dialog?.killing?.value = true
-                    dialog?.killed?.value = killProc(dialog?.proc!!)
-                    delay(300)
-                    dialog?.killing?.value = false
-                }
-
+                val target = showKillDialog
                 showKillDialog = null
+                viewModel.viewModelScope.launch {
+                    target?.killWithUiState(
+                        KillAction.fromId(Settings.defaultKillAction).resolve()
+                    )
+                }
             }
         }
 

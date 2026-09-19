@@ -67,7 +67,7 @@ namespace fs = std::filesystem;
 using json = nlohmann::json;
 
 static const char* DAEMON_NAME = "taskmanagerd";
-static const char* DAEMON_VERSION = "1.6.0-fork1";
+static const char* DAEMON_VERSION = "1.6.0-fork2";
 static constexpr int PROTOCOL_VERSION = 2;
 
 // Capabilities advertised in HELLO. The app can degrade gracefully when a

@@ -2,6 +2,7 @@ package com.rk.taskmanager.daemon
 
 import android.util.Log
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CompletableDeferred
@@ -42,11 +43,13 @@ var isConnected by mutableStateOf(false)
  */
 const val MAX_SUPPORTED_PROTOCOL = 2
 
-var daemonCaps: Set<String> = emptySet()
+// Snapshot-state backed so composables (daemon status screen, legacy
+// banner) recompose automatically when a connection is established.
+var daemonCaps: Set<String> by mutableStateOf(emptySet())
     private set
-var daemonProtocolVersion: Int = 0
+var daemonProtocolVersion: Int by mutableIntStateOf(0)
     private set
-var daemonVersionString: String = ""
+var daemonVersionString: String by mutableStateOf("")
     private set
 
 object DaemonServer {
@@ -121,9 +124,7 @@ object DaemonServer {
 
         daemonProtocolVersion = proto
         daemonVersionString = hello.optString("version", "unknown")
-        daemonCaps = hello.optJSONArray("caps")?.let { arr ->
-            (0 until arr.length()).map { arr.optString(it) }.toSet()
-        } ?: emptySet()
+        daemonCaps = parseCaps(hello)
 
         log("Daemon v$daemonVersionString | protocol v$proto | caps: $daemonCaps")
         isConnected = true
