@@ -414,11 +414,16 @@ fun NetScreen(modifier: Modifier = Modifier) {
             return@LaunchedEffect
         }
         var anchor = System.currentTimeMillis() - LIVE_RATE_SAMPLE_MS
-        var prev = queryPerAppUsage(context, anchor)
-        if (prev == null) {
+        val baseline = queryPerAppUsage(context, anchor)
+        if (baseline == null) {
+            // queryPerAppUsage returns null only when usage access vanished —
+            // drop out of live mode instead of spinning on failed queries.
             liveMode = false
             return@LaunchedEffect
         }
+        // Non-null type on purpose: a nullable loop-carried var would lose
+        // its null-check smart cast on every loop iteration.
+        var prev: Map<Int, LongArray> = baseline
         var prevStamp = System.currentTimeMillis()
         while (isActive) {
             delay(LIVE_RATE_SAMPLE_MS)
