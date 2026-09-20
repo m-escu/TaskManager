@@ -119,10 +119,14 @@ private val HISTORY_RETENTION_MS = 30L * 24 * 3600 * 1000
 private val HISTORY_PERIODS_DAYS = intArrayOf(1, 7, 30)
 private const val TAG = "BatteryScreen"
 
+/** Hold the live current series this long after a charging-flag transition. */
+private const val CURRENT_SETTLE_MS = 3_000L
+
 /**
  * Live sliding windows for the battery tab (the net-tab pattern): 120
- * points at 1 Hz = a 2-minute real-time curve. Fed only while this screen
- * is composed; the charts keep whatever the window last held between visits.
+ * points at the configured graph cadence (Settings -> Graph -> update
+ * delay). Fed only while this screen is composed; the charts keep whatever
+ * the window last held between visits.
  */
 private val liveLevelGraphHandler = GraphDataHandler(seriesCount = 1)
 private val liveCurrentGraphHandler = GraphDataHandler(seriesCount = 1)
@@ -169,26 +173,45 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
     var showResetConfirm by remember { mutableStateOf(false) }
 
     // Live polling (request-id correlated; legacy daemons degrade gracefully).
-    // In Live mode the poll runs at 1 Hz and feeds the two sliding-window
-    // charts — BATTERY_PING at 1 Hz is exactly what the widget's live
-    // service already does, so the daemon load is proven fine; otherwise
-    // 5 s is plenty for the stats cards below. Current is signed exactly
-    // like the history curve: + charging, - discharging, vendor sign
-    // normalized away, -1 (unknown) plots as 0.
+    // In Live mode the poll cadence follows Settings -> Graph -> update delay
+    // (the same knob the CPU/RAM/GPU live charts use via graphUpdater; the
+    // daemon reads a handful of sysfs files per BATTERY_PING, so it holds up
+    // at the 150 ms floor); otherwise 5 s is plenty for the stats cards
+    // below. Current is signed exactly like the history curve: + charging,
+    // - discharging, vendor sign normalized away, -1 (unknown) plots as 0.
     LaunchedEffect(liveMode) {
+        var lastCharging: Boolean? = null
+        var transitionAt = 0L
         while (isActive) {
             val parsed = parseBattery(DaemonClient.battery(timeoutMs = 2_500))
             live = parsed
             if (liveMode && parsed != null && parsed.known && parsed.present) {
+                val now = System.currentTimeMillis()
+                if (lastCharging != null && lastCharging != parsed.charging) {
+                    transitionAt = now
+                }
+                lastCharging = parsed.charging
                 val ua = WidgetStats.normalizeCurrentUA(parsed.currentUA, parsed.charging)
                 if (parsed.capacity in 0..100) {
                     liveLevelGraphHandler.update(parsed.capacity) { liveChartGate() }
                 }
-                liveCurrentGraphHandler.update(
-                    if (ua == -1L) 0 else (ua / 1000).toInt()
-                ) { liveChartGate() }
+                // Fuel gauges need a measurement cycle or two after the
+                // charger attaches/detaches; the first reading across a
+                // transition still reflects the PREVIOUS state (charging
+                // at 1.5 A showed up as a -1.5 A "drain" spike the instant
+                // the cable was pulled). Hold the current series through
+                // that window instead of plotting the artifact — the level
+                // series is unaffected and keeps flowing.
+                if (now - transitionAt >= CURRENT_SETTLE_MS) {
+                    liveCurrentGraphHandler.update(
+                        if (ua == -1L) 0 else (ua / 1000).toInt()
+                    ) { liveChartGate() }
+                }
             }
-            delay(if (liveMode) 1_000L else 5_000L)
+            delay(
+                if (liveMode) Settings.updateFrequency.coerceIn(150, 5_000).toLong()
+                else 5_000L
+            )
         }
     }
 

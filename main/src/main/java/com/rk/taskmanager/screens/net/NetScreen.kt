@@ -389,7 +389,9 @@ fun NetScreen(modifier: Modifier = Modifier) {
                         navControllerRef.get()?.currentDestination?.route == SettingsRoutes.Home.route
                 }
             }
-            delay(1000)
+            // Same cadence knob as the CPU/RAM/GPU/battery live charts
+            // (Settings -> Graph -> update delay) instead of a hardcoded 1 s.
+            delay(Settings.updateFrequency.coerceIn(150, 5_000).toLong())
         }
     }
 
