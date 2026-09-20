@@ -79,3 +79,68 @@ jobs:
           name: TaskManager-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+  # Emulator instrumented tests: boots a headless emulator on the runner
+  # (ubuntu-latest has KVM), installs the debug build and runs the :main
+  # androidTest suite — the only place a REAL Android runtime executes
+  # (Room/SQLite, activity lifecycle, Compose host, degraded no-daemon
+  # launch). This is the regression net for the crash classes that bit the
+  # chart screens repeatedly (fork5/15/16).
+  instrumented-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Same SDK prep as android-build: :main (and :taskmanagerd's native
+      # build) needs the pinned NDK + the non-preinstalled platforms.
+      - name: Accept SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - name: Cache NDK
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/ndk/28.0.13004108
+          key: ndk-28.0.13004108
+
+      - name: Install pinned build dependencies
+        run: |
+          NDK_VERSION=$(sed -n 's/^ndk = "\(.*\)"/\1/p' gradle/libs.versions.toml)
+          SDKMANAGER=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1)
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::sdkmanager not found under $ANDROID_HOME"
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --install "ndk;$NDK_VERSION" "platforms;android-36" "platforms;android-37.0" > /dev/null
+          "$SDKMANAGER" --list_installed | grep -E "ndk;|platforms;android-3"
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Set up Gradle caching
+        uses: gradle/actions/setup-gradle@v4
+
+      # KVM node perms (belt-and-braces from the emulator-runner README —
+      # the runner usually exposes /dev/kvm out of the box).
+      - name: Enable KVM group perms
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -la /dev/kvm
+
+      - name: Run instrumented tests on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          # minSdk 26 app on a recent-but-stable image; AVD boot + gradle
+          # build stay well inside the job timeout.
+          script: ./gradlew :main:connectedDebugAndroidTest --stacktrace
