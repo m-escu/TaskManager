@@ -25,6 +25,16 @@ GitHub Actions run (no store releases). Format roughly follows
   Russian/Chinese/pt-BR gained 18 each — all five locales are now truly in
   lockstep, not just assumed to be.
 - README rewritten for the fork; this CHANGELOG added.
+- Docs follow-ups: new License & Attribution section (Apache-2.0
+  carry-forward, upstream credit, independent re-implementation of the
+  formerly paywalled features, no-affiliation notice); removed the
+  inherited RB-log badge — it tracked the upstream application id
+  (`com.rk.taskmanager`), not the fork's (`com.mescu.taskmanager`).
+  README now also states the unified graph cadence (Settings -> Graph ->
+  update delay drives every live chart) and the QS tile's role: only
+  Android-12-legal external starter of the live service, sole gate for
+  1 Hz widget pushes, and the service it controls evaluates the battery
+  alerts in the background.
 
 ## [1.15.0-fork17] (76)
 

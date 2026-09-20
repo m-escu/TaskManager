@@ -23,16 +23,23 @@ a dual-mode home-screen widget and threshold alerts.
   (SIGTERM → SIGKILL with a configurable grace period, PID-recycling safe),
   per-core stats, battery/power_supply probing, PSS via smaps_rollup,
   push subscriptions.
-- **Battery monitoring**: live level/current/temperature stats, live 1 Hz
-  sliding-window graphs, a 30-day local history with 24 h/7 d/30 d views,
-  reset, and threshold alerts (drain current / temperature, notification
-  or toast, with sustain windows).
+- **Battery monitoring**: live level/current/temperature stats, live
+  sliding-window graphs (level + signed current, Live default), a 30-day
+  local history with 24 h/7 d/30 d views, reset, and threshold alerts
+  (drain current / temperature, notification or toast, with sustain
+  windows). Every live chart in the app — CPU, RAM, GPU, network,
+  battery — polls at the same Settings -> Graph -> update delay knob.
 - **Network monitoring**: per-interface live rates, per-app traffic totals
   and live per-app transfer rates (usage access is self-granted via
   root/Shizuku when available).
 - **Home-screen widget + QS tile**: dual mode — ephemeral updates on a
-  configurable interval, or a 1 Hz live foreground-service mode controlled
-  by a Quick Settings tile; centered, auto-shrinking text layout.
+  configurable interval, or a 1 Hz live session toggled by a Quick
+  Settings tile; centered, auto-shrinking text layout. The tile is the
+  only Android-12-legal way to start that service from outside the app
+  (widget/boot receivers may not call startForegroundService), and the
+  service it controls is also what evaluates the battery alerts in the
+  background — a tile session or the permanent notification keeps them
+  armed.
 - **Process management**: color-coded list, terminate vs force-kill with
   confirm dialogs, CPU% / CPU-time / lifetime-average sorting, PSS/RSS,
   per-core usage.
