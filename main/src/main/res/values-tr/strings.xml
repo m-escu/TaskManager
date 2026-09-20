@@ -146,7 +146,7 @@
     <string name="qs_tile_live">Canlı izleyici</string>
     <string name="live_notif_channel">Canlı izleyici</string>
     <string name="live_notif_title">Task Manager canlı izleyici</string>
-<string name="live_notif_text">CPU %1$d%% \u00b7 RAM %2$d%% \u00b7 %3$s</string>
+<string name="live_notif_text">CPU %1$d%% \u00b7 RAM %2$d%% \u00b7 %3$s \u00b7 %4$s</string>
     <!-- Void teması + widget yenileme ayarları (fork10) -->
     <string name="void_theme">Void</string>
     <string name="widget">Widget</string>
@@ -172,5 +172,19 @@
     <string name="accent_custom">\u00d6zel renk</string>
     <string name="accent_hex_label">#RRGGBB</string>
     <string name="accent_hex_invalid">Ge\u00e7ersiz renk. #RRGGBB kullan\u0131n.</string>
+
+
+    <!-- fork12: temp column, kill-for-system, process colors, permanent notification -->
+    <string name="widget_temp">S\u0131cak.</string>
+    <string name="kill_system_toggle">Sistem uygulamalar\u0131 i\u00e7in sonland\u0131r d\u00fc\u011fmesi</string>
+    <string name="kill_system_toggle_desc">Sonland\u0131r d\u00fc\u011fmesini sistem uygulamalar\u0131 sat\u0131rlar\u0131nda da g\u00f6ster. Bir sistem uygulamas\u0131n\u0131 sonland\u0131rmak her zaman \u00f6nce onay ister.</string>
+    <string name="proc_colors">S\u00fc\u00e7 listesi renkleri</string>
+    <string name="proc_color_user">Kullan\u0131c\u0131 uygulamalar\u0131</string>
+    <string name="proc_color_system">Sistem uygulamalar\u0131</string>
+    <string name="proc_color_kernel">\u00c7ekirdek s\u00fc\u00e7leri</string>
+    <string name="color_default">Varsay\u0131lan</string>
+    <string name="color_reset_hint">Varsay\u0131lan rengine d\u00f6nmek i\u00e7in bo\u015f b\u0131rak\u0131n.</string>
+    <string name="permanent_notification">Kal\u0131c\u0131 bildirim</string>
+    <string name="permanent_notification_desc">Canl\u0131 izleyici bildirimini QS kutusu olmadan, uygulaman\u0131n kendisi taraf\u0131ndan a\u00e7\u0131k tutar. Yeniden ba\u015flatmalarda s\u00fcrer. Kapatmak, canl\u0131 bir oturum etkin de\u011filse servisi durdurur.</string>
 
 </resources>

@@ -30,11 +30,18 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * Live widget mode: pushes a fresh sample to every widget once per second
- * and mirrors CPU/RAM/Battery into the foreground notification.
+ * Live monitor service. Pushes a fresh sample to every widget once per
+ * second and mirrors CPU/RAM/current-drain/temperature into the foreground
+ * notification.
  *
- * Toggled by the QS tile ([LiveTileService]); also stops itself
- * automatically when the last widget instance is removed from home.
+ * Two independent activation sources keep it alive, tracked separately:
+ *  - the QS tile ([LiveTileService]) starts a LIVE session for 1 Hz widgets,
+ *  - the "permanent notification" setting (Settings -> Widget) keeps the
+ *    notification running on its own, independent of widgets and tile; it
+ *    is restored after reboot by [LiveBootReceiver].
+ *
+ * The service stops when BOTH sources are gone; the no-widgets auto-stop
+ * only applies to tile sessions, never to the permanent notification.
  *
  * Data sources: the daemon is attached on start when a working mode is
  * configured (grants are already persisted, so no prompt ever fires while
@@ -45,17 +52,35 @@ class WidgetLiveService : Service() {
 
     companion object {
         const val ACTION_START = "com.rk.taskmanager.widget.action.START_LIVE"
-        const val ACTION_STOP = "com.rk.taskmanager.widget.action.STOP_LIVE"
+        const val ACTION_START_NOTIF = "com.rk.taskmanager.widget.action.START_NOTIF"
+        const val ACTION_STOP_QS = "com.rk.taskmanager.widget.action.STOP_LIVE"
+        const val ACTION_STOP_NOTIF = "com.rk.taskmanager.widget.action.STOP_NOTIF"
 
         private const val CHANNEL_ID = "live_monitor"
         private const val NOTIF_ID = 1001
         private const val INTERVAL_MS = 1_000L
         private const val TAG = "WidgetLiveService"
 
-        /** Mirrored by the QS tile and the ephemeral widget renderer. */
+        /** Mirrored by the QS tile and the ephemeral widget renderer: true
+         *  whenever the service is sampling (any activation source). */
         @Volatile
         var isRunning: Boolean = false
             private set
+
+        /** True only while a QS-tile live session is active (tile state). */
+        @Volatile
+        var liveSession: Boolean = false
+            private set
+
+        /**
+         * Optimistically clears the tile-session flag so the tile reflects
+         * "off" instantly; the service's stop handler confirms it (and the
+         * state stays false even if the service keeps running for the
+         * permanent notification).
+         */
+        fun requestStopTileSession() {
+            liveSession = false
+        }
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -69,16 +94,51 @@ class WidgetLiveService : Service() {
     @Volatile private var lastRamUsed = 0L
     @Volatile private var lastRamTotal = 0L
     @Volatile private var lastCurrentUA = -1L
+    @Volatile private var lastTempTenthsC = -1
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopSelf()
-            return START_NOT_STICKY
+        // Always enter foreground first: any startForegroundService() start
+        // must reach startForeground() regardless of the action's outcome.
+        startInForeground()
+
+        when (intent?.action) {
+            ACTION_STOP_QS -> {
+                liveSession = false
+                if (!Settings.permanentNotification) {
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+            }
+
+            ACTION_STOP_NOTIF -> {
+                if (!liveSession) {
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+            }
+
+            ACTION_START_NOTIF -> {
+                // Settings-driven session: the pref is the source of truth.
+            }
+
+            else -> {
+                // ACTION_START from the QS tile...
+                if (intent?.action == ACTION_START) {
+                    liveSession = true
+                } else {
+                    // ...or a sticky restart with a null intent. Nothing
+                    // restores a tile session across process death; only
+                    // the permanent notification comes back.
+                    if (!Settings.permanentNotification) {
+                        stopSelf()
+                        return START_NOT_STICKY
+                    }
+                }
+            }
         }
 
-        startInForeground()
         isRunning = true
         ensureLoop()
         attachDaemon()
@@ -87,6 +147,7 @@ class WidgetLiveService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        liveSession = false
         runCatching {
             WidgetRenderer.push(
                 context = this,
@@ -94,6 +155,7 @@ class WidgetLiveService : Service() {
                 ramUsed = lastRamUsed,
                 ramTotal = lastRamTotal,
                 currentUA = lastCurrentUA,
+                tempTenthsC = lastTempTenthsC,
                 live = false,
             )
         }
@@ -125,20 +187,22 @@ class WidgetLiveService : Service() {
                 try {
                     val cpu = WidgetStats.cpuUsage()
                     val (used, total) = WidgetStats.readRam(this@WidgetLiveService)
-                    val currentUA = WidgetStats.readCurrentUA(this@WidgetLiveService)
+                    val battery = WidgetStats.readBattery(this@WidgetLiveService)
 
                     WidgetRenderer.push(
                         context = this@WidgetLiveService,
                         cpuPercent = cpu,
                         ramUsed = used,
                         ramTotal = total,
-                        currentUA = currentUA,
+                        currentUA = battery.currentUA,
+                        tempTenthsC = battery.tempTenthsC,
                         live = true,
                     )
                     lastCpu = cpu
                     lastRamUsed = used
                     lastRamTotal = total
-                    lastCurrentUA = currentUA
+                    lastCurrentUA = battery.currentUA
+                    lastTempTenthsC = battery.tempTenthsC
 
                     // Re-read every tick: a changed setting applies live,
                     // without restarting the service. The first tick always
@@ -149,13 +213,15 @@ class WidgetLiveService : Service() {
                             cpu = cpu,
                             ramUsed = used,
                             ramTotal = total,
-                            currentUA = currentUA,
+                            currentUA = battery.currentUA,
+                            tempTenthsC = battery.tempTenthsC,
                         )
                     }
                     tick++
 
-                    // Auto-stop when the user removed every widget instance.
-                    if (placedWidgetIds().isEmpty()) {
+                    // Auto-stop when the user removed every widget instance —
+                    // but never while the permanent notification is wanted.
+                    if (placedWidgetIds().isEmpty() && !Settings.permanentNotification) {
                         Log.i(TAG, "no widget instances left; stopping live mode")
                         stopSelf()
                         break
@@ -185,7 +251,9 @@ class WidgetLiveService : Service() {
             )
         )
 
-        val notification = buildNotification(cpu = -1, ramUsed = 0L, ramTotal = 0L, currentUA = -1L)
+        val notification = buildNotification(
+            cpu = -1, ramUsed = 0L, ramTotal = 0L, currentUA = -1L, tempTenthsC = -1
+        )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             // specialUse is unknown to <34; passing it there would crash.
             startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
@@ -194,12 +262,24 @@ class WidgetLiveService : Service() {
         }
     }
 
-    private fun updateNotification(cpu: Int, ramUsed: Long, ramTotal: Long, currentUA: Long) {
+    private fun updateNotification(
+        cpu: Int,
+        ramUsed: Long,
+        ramTotal: Long,
+        currentUA: Long,
+        tempTenthsC: Int,
+    ) {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(NOTIF_ID, buildNotification(cpu, ramUsed, ramTotal, currentUA))
+        nm.notify(NOTIF_ID, buildNotification(cpu, ramUsed, ramTotal, currentUA, tempTenthsC))
     }
 
-    private fun buildNotification(cpu: Int, ramUsed: Long, ramTotal: Long, currentUA: Long): Notification {
+    private fun buildNotification(
+        cpu: Int,
+        ramUsed: Long,
+        ramTotal: Long,
+        currentUA: Long,
+        tempTenthsC: Int,
+    ): Notification {
         val open = PendingIntent.getActivity(
             this,
             0,
@@ -207,18 +287,24 @@ class WidgetLiveService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val ramPct = if (ramTotal > 0L) ((ramUsed * 100L) / ramTotal).toInt() else -1
-        // Same column the widget shows: compact drain like "850mA" / "1.23A",
-        // or the en-dash placeholder when the device exposes no current.
-        val drain = if (currentUA < 0) {
-            getString(strings.widget_no_data)
-        } else {
+        // Same columns the widget shows: compact signed drain ("+850mA" /
+        // "-1.23A") and temperature ("32.4°C"), or the en-dash placeholder.
+        val drain = if (currentUA != -1L) {
             WidgetStats.formatCurrent(currentUA)
+        } else {
+            getString(strings.widget_no_data)
+        }
+        val temp = if (tempTenthsC != -1) {
+            WidgetStats.formatTemperature(tempTenthsC)
+        } else {
+            getString(strings.widget_no_data)
         }
         val text = getString(
             strings.live_notif_text,
             cpu.coerceAtLeast(0),
             ramPct.coerceAtLeast(0),
             drain,
+            temp,
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_taskmanager_foreground)

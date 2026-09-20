@@ -63,6 +63,10 @@ import com.rk.taskmanager.R
 import com.rk.commons.settings.Settings
 import com.rk.taskmanager.daemon.KillAction
 import com.rk.taskmanager.settings.SettingsRoutes
+import com.rk.taskmanager.settings.killSystemAppsEnabled
+import com.rk.taskmanager.settings.procColorKernelState
+import com.rk.taskmanager.settings.procColorSystemState
+import com.rk.taskmanager.settings.procColorUserState
 import com.rk.taskmanager.settings.pullToRefresh_procs
 import com.rk.commons.strings
 import kotlinx.coroutines.delay
@@ -289,11 +293,23 @@ fun ProcessItem(
         enabled = !uiProc.killed.value,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // Fork: color-coded process names. 0 = theme default text
+                // color; system apps reddish, kernel processes greenish.
+                val nameColorArgb = when {
+                    !uiProc.isApp -> procColorKernelState
+                    uiProc.isSystemApp -> procColorSystemState
+                    else -> procColorUserState
+                }
                 Text(
                     fontWeight = FontWeight.Bold,
                     text = if (uiProc.name.length > textLimit) {
                         uiProc.name.take(textLimit) + "..."
                     } else uiProc.name,
+                    color = if (nameColorArgb == 0) {
+                        androidx.compose.ui.graphics.Color.Unspecified
+                    } else {
+                        androidx.compose.ui.graphics.Color(nameColorArgb)
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -394,7 +410,7 @@ fun ProcessItem(
             }
         },
         endWidget = {
-            if (uiProc.isUserApp) {
+            if (uiProc.isUserApp || (uiProc.isSystemApp && killSystemAppsEnabled)) {
                 if (uiProc.killing.value) {
                     CircularProgressIndicator(modifier = Modifier
                         .padding(end = 22.dp)
@@ -423,24 +439,34 @@ fun ProcessItem(
     )
 
     if (showKillDialog != null) {
-        if (Settings.confirmkill) {
+        val target = showKillDialog
+        // Fork policy: system apps ALWAYS get a confirmation, regardless of
+        // the default kill action. Normal apps are confirmed only in ASK
+        // mode — an explicit default action is the user's confirmation.
+        val alwaysAsk = target?.isSystemApp == true
+        if (alwaysAsk || (
+                KillAction.fromId(Settings.defaultKillAction) == KillAction.ASK &&
+                    Settings.confirmkill
+                )
+        ) {
             KillConfirmDialog(
-                processName = showKillDialog?.name ?: "",
+                processName = target?.name ?: "",
+                forceAsk = alwaysAsk,
                 onDismiss = { showKillDialog = null },
                 onConfirm = { action ->
-                    val target = showKillDialog
+                    val killTarget = showKillDialog
                     showKillDialog = null
                     viewModel.viewModelScope.launch {
-                        target?.killWithUiState(action)
+                        killTarget?.killWithUiState(action)
                     }
                 },
             )
         } else {
             LaunchedEffect(Unit) {
-                val target = showKillDialog
+                val killTarget = showKillDialog
                 showKillDialog = null
                 viewModel.viewModelScope.launch {
-                    target?.killWithUiState(
+                    killTarget?.killWithUiState(
                         KillAction.fromId(Settings.defaultKillAction).resolve()
                     )
                 }

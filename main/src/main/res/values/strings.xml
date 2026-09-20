@@ -302,7 +302,7 @@
     <string name="qs_tile_live">Live monitor</string>
     <string name="live_notif_channel">Live monitor</string>
     <string name="live_notif_title">Task Manager live monitor</string>
-<string name="live_notif_text">CPU %1$d%% \u00b7 RAM %2$d%% \u00b7 %3$s</string>
+<string name="live_notif_text">CPU %1$d%% \u00b7 RAM %2$d%% \u00b7 %3$s \u00b7 %4$s</string>
     <!-- Void theme + widget refresh settings (fork10) -->
     <string name="void_theme">Void</string>
     <string name="widget">Widget</string>
@@ -328,5 +328,19 @@
     <string name="accent_custom">Custom color</string>
     <string name="accent_hex_label">#RRGGBB</string>
     <string name="accent_hex_invalid">Invalid color. Use #RRGGBB.</string>
+
+
+    <!-- fork12: temp column, kill-for-system, process colors, permanent notification -->
+    <string name="widget_temp">Temp</string>
+    <string name="kill_system_toggle">Kill button for system apps</string>
+    <string name="kill_system_toggle_desc">Show the kill button on system-app rows too. Killing a system app always asks for confirmation first.</string>
+    <string name="proc_colors">Process list colors</string>
+    <string name="proc_color_user">User apps</string>
+    <string name="proc_color_system">System apps</string>
+    <string name="proc_color_kernel">Kernel processes</string>
+    <string name="color_default">Default</string>
+    <string name="color_reset_hint">Leave empty to reset to the default color.</string>
+    <string name="permanent_notification">Permanent notification</string>
+    <string name="permanent_notification_desc">Keep the live monitor notification running from the app itself, no QS tile needed. Survives reboots. Toggling it off stops the service unless a live session is active.</string>
 
 </resources>

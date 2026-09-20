@@ -13,13 +13,14 @@ internal object WidgetRefresher {
     suspend fun refresh(context: Context) {
         val cpu = WidgetStats.cpuUsage()
         val (used, total) = WidgetStats.readRam(context)
-        val currentUA = WidgetStats.readCurrentUA(context)
+        val battery = WidgetStats.readBattery(context)
         WidgetRenderer.push(
             context = context,
             cpuPercent = cpu,
             ramUsed = used,
             ramTotal = total,
-            currentUA = currentUA,
+            currentUA = battery.currentUA,
+            tempTenthsC = battery.tempTenthsC,
             live = WidgetLiveService.isRunning,
         )
     }

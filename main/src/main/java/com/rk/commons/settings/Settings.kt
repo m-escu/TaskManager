@@ -39,6 +39,19 @@ object Settings {
      *  theme's own accent (also when dynamic color / monet is active). */
     var accentColor by IntPref(key = "accent_color", default = 0)
 
+    /** Keep the live-monitor notification running from app settings alone
+     *  (no QS tile needed). Survives reboots via the boot receiver. */
+    var permanentNotification by BooleanPref(key = "permanent_notification", default = false)
+
+    /** Show the Kill button on system-app rows in the process list.
+     *  Killing a system app ALWAYS asks for confirmation first. */
+    var killSystemApps by BooleanPref(key = "kill_system_apps", default = false)
+
+    /** Process-list name colors (ARGB). 0 = theme default text color. */
+    var procColorUser by IntPref(key = "proc_color_user", default = 0)
+    var procColorSystem by IntPref(key = "proc_color_system", default = 0xFFE57373.toInt())
+    var procColorKernel by IntPref(key = "proc_color_kernel", default = 0xFF81C784.toInt())
+
     /** How the Kill button stops processes: 0 = ask, 1 = terminate (SIGTERM->SIGKILL), 2 = force (SIGKILL). */
     var defaultKillAction by IntPref(key = "default_kill_action", default = 0)
 

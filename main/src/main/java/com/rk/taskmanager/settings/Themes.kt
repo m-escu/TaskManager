@@ -1,12 +1,9 @@
 package com.rk.taskmanager.settings
 
 import android.os.Build
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -14,11 +11,8 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -130,10 +124,10 @@ fun Themes(modifier: Modifier = Modifier) {
                 onPick = { argb -> applyAccentChoice(argb) }
             )
 
-            AccentRow(
+            ColorRow(
                 title = stringResource(strings.accent_custom),
-                description = stringResource(strings.accent_hex_label),
-                swatch = currentAccentColor(),
+                argb = accentColor.intValue,
+                defaultSwatch = MaterialTheme.colorScheme.primary,
                 onClick = { showHexDialog = true },
             )
         }
@@ -141,7 +135,9 @@ fun Themes(modifier: Modifier = Modifier) {
 
     if (showHexDialog) {
         HexColorDialog(
+            title = stringResource(strings.accent_custom),
             initial = currentAccentHex(),
+            allowEmptyReset = false,
             onConfirm = { argb ->
                 applyAccentChoice(argb)
                 showHexDialog = false
@@ -163,8 +159,6 @@ private fun applyAccentChoice(argb: Int) {
         }
     }
 }
-
-private fun currentAccentColor(): Int = accentColor.intValue
 
 private fun currentAccentHex(): String {
     val argb = accentColor.intValue
@@ -213,100 +207,5 @@ private fun AccentSwatch(color: Color, selected: Boolean, onClick: () -> Unit) {
                 shape = CircleShape,
             )
             .clickable(onClick = onClick),
-    )
-}
-
-/** Clickable preference row (PreferenceTemplate has no onClick of its own). */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun AccentRow(
-    title: String,
-    description: String,
-    swatch: Int,
-    onClick: () -> Unit,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    PreferenceTemplate(
-        modifier = Modifier.combinedClickable(
-            interactionSource = interactionSource,
-            indication = androidx.compose.material3.ripple(),
-            onClick = onClick,
-        ),
-        title = { Text(title) },
-        description = { Text(description) },
-        startWidget = {
-            Box(
-                modifier = Modifier
-                    .size(24.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (swatch == 0) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            Color(swatch)
-                        }
-                    )
-            )
-        },
-    )
-}
-
-@Composable
-private fun HexColorDialog(
-    initial: String,
-    onConfirm: (Int) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var text by remember { mutableStateOf(initial) }
-    var error by remember { mutableStateOf(false) }
-
-    fun parseHexOrNull(): Int? {
-        val input = text.trim()
-        val digits = if (input.startsWith("#")) input.substring(1) else input
-        if (digits.length !in 6..8) return null
-        val argb = digits.toLongOrNull(16) ?: return null
-        // Force opaque: an accent needs a solid color, not a ghost tint.
-        return (0xFF000000L or (argb and 0x00FFFFFFL)).toInt()
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(strings.accent_custom)) },
-        text = {
-            OutlinedTextField(
-                value = text,
-                onValueChange = {
-                    text = it
-                    error = false
-                },
-                label = { Text(stringResource(strings.accent_hex_label)) },
-                isError = error,
-                supportingText = if (error) {
-                    { Text(stringResource(strings.accent_hex_invalid)) }
-                } else {
-                    null
-                },
-                singleLine = true,
-                modifier = Modifier
-                    .padding(top = 4.dp),
-            )
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val parsed = parseHexOrNull()
-                    if (parsed == null) {
-                        error = true
-                    } else {
-                        onConfirm(parsed)
-                    }
-                }
-            ) {
-                Text(stringResource(strings.apply))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(strings.cancel)) }
-        },
     )
 }

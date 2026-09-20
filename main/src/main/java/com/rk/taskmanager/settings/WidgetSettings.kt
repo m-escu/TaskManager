@@ -33,9 +33,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.rk.commons.settings.Settings
 import com.rk.commons.strings
+import com.rk.components.SettingsToggle
 import com.rk.components.compose.preferences.base.PreferenceGroup
 import com.rk.components.compose.preferences.base.PreferenceLayout
 import com.rk.components.compose.preferences.base.PreferenceTemplate
+import com.rk.taskmanager.widget.WidgetLiveService
 import com.rk.taskmanager.widget.WidgetRefreshScheduler
 
 /**
@@ -88,6 +90,36 @@ fun WidgetSettings(modifier: Modifier = Modifier) {
         }
 
         PreferenceGroup(heading = stringResource(strings.live_notif_channel)) {
+            // Keeps the live-monitor notification running without the QS
+            // tile; survives reboots via LiveBootReceiver.
+            SettingsToggle(
+                label = stringResource(strings.permanent_notification),
+                description = stringResource(strings.permanent_notification_desc),
+                default = Settings.permanentNotification,
+                showSwitch = true,
+                sideEffect = { enabled ->
+                    Settings.permanentNotification = enabled
+                    if (enabled) {
+                        runCatching {
+                            androidx.core.content.ContextCompat.startForegroundService(
+                                context,
+                                Intent(context, WidgetLiveService::class.java)
+                                    .setAction(WidgetLiveService.ACTION_START_NOTIF)
+                            )
+                        }
+                    } else {
+                        // Plain startService: the settings screen is a
+                        // foreground context, and a bare stop must not
+                        // demand a startForeground round-trip.
+                        runCatching {
+                            context.startService(
+                                Intent(context, WidgetLiveService::class.java)
+                                    .setAction(WidgetLiveService.ACTION_STOP_NOTIF)
+                            )
+                        }
+                    }
+                },
+            )
             ActionRow(
                 title = stringResource(strings.notif_refresh_title),
                 description = stringResource(

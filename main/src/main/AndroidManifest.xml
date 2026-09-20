@@ -28,6 +28,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- Restores the permanent live-monitor notification after reboot. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
 
     <application
@@ -84,7 +86,8 @@
 
         <!-- Live widget mode: 1 Hz public-API samples pushed to every
              widget and mirrored into a persistent notification. Toggled
-             from the QS tile below. -->
+             from the QS tile below, or kept alive by the "permanent
+             notification" setting. -->
         <service
             android:name=".widget.WidgetLiveService"
             android:exported="false"
@@ -93,6 +96,16 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Live system monitor that keeps the home-screen widget updated at 1 Hz." />
         </service>
+
+        <!-- Restores the permanent live-monitor notification after reboot
+             (specialUse FGS starts from BOOT_COMPLETED are permitted). -->
+        <receiver
+            android:name=".widget.LiveBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <!-- QS tile: toggles the live widget mode. TileService.onClick runs
              in a foreground context, so FGS starts from it are allowed. -->

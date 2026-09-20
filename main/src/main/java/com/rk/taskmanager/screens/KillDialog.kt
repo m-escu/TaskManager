@@ -32,6 +32,8 @@ import kotlinx.coroutines.delay
  *  - ASK (default): shows both "Terminate" (SIGTERM -> SIGKILL after the
  *    grace period) and "Force kill" (immediate SIGKILL).
  *  - TERMINATE / FORCE: shows a single button for the configured action.
+ *  - [forceAsk] overrides the policy with the ASK-style chooser; used for
+ *    system apps, which are always confirmed before termination.
  *
  * [onConfirm] receives the concrete action chosen by the user.
  */
@@ -40,6 +42,7 @@ fun KillConfirmDialog(
     processName: String,
     onDismiss: () -> Unit,
     onConfirm: (KillAction) -> Unit,
+    forceAsk: Boolean = false,
 ) {
     XedDialog(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -65,7 +68,7 @@ fun KillConfirmDialog(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                when (KillAction.fromId(Settings.defaultKillAction)) {
+                when (if (forceAsk) KillAction.ASK else KillAction.fromId(Settings.defaultKillAction)) {
                     KillAction.ASK -> {
                         TextButton(onClick = { onConfirm(KillAction.TERMINATE) }) {
                             Text(stringResource(strings.kill_action_terminate))

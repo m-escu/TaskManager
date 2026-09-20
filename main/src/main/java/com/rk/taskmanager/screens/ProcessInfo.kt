@@ -628,24 +628,36 @@ fun ProcessInfo(
     }
 
     if (showKillDialog != null) {
-        if (com.rk.commons.settings.Settings.confirmkill) {
+        val target = showKillDialog
+        // Fork policy: system apps ALWAYS get a confirmation; normal apps
+        // are confirmed only in ASK mode (an explicit default action is the
+        // user's confirmation).
+        val alwaysAsk = target?.isSystemApp == true
+        if (alwaysAsk || (
+                com.rk.taskmanager.daemon.KillAction.fromId(
+                    com.rk.commons.settings.Settings.defaultKillAction
+                ) == com.rk.taskmanager.daemon.KillAction.ASK &&
+                    com.rk.commons.settings.Settings.confirmkill
+                )
+        ) {
             KillConfirmDialog(
-                processName = showKillDialog?.name ?: "",
+                processName = target?.name ?: "",
+                forceAsk = alwaysAsk,
                 onDismiss = { showKillDialog = null },
                 onConfirm = { action ->
-                    val target = showKillDialog
+                    val killTarget = showKillDialog
                     showKillDialog = null
                     viewModel.viewModelScope.launch {
-                        target?.killWithUiState(action)
+                        killTarget?.killWithUiState(action)
                     }
                 },
             )
         } else {
             LaunchedEffect(Unit) {
-                val target = showKillDialog
+                val killTarget = showKillDialog
                 showKillDialog = null
                 viewModel.viewModelScope.launch {
-                    target?.killWithUiState(
+                    killTarget?.killWithUiState(
                         KillAction.fromId(com.rk.commons.settings.Settings.defaultKillAction).resolve()
                     )
                 }

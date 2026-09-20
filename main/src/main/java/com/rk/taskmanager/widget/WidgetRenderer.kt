@@ -19,8 +19,10 @@ object WidgetRenderer {
 
     /**
      * Renders one frame and applies it to every placed instance of the
-     * widget. [cpuPercent] uses -1 for "unavailable", [currentUA] -1
-     * (microamps, absolute), [ramTotal] 0 for "unavailable".
+     * widget. [cpuPercent] uses -1 for "unavailable", [ramTotal] 0 for
+     * "unavailable", [currentUA] -1 for "no reading" (otherwise SIGNED:
+     * positive = charging, negative = discharging), [tempTenthsC] -1 for
+     * "unknown".
      */
     fun push(
         context: Context,
@@ -28,6 +30,7 @@ object WidgetRenderer {
         ramUsed: Long,
         ramTotal: Long,
         currentUA: Long,
+        tempTenthsC: Int,
         live: Boolean,
     ) {
         val manager = AppWidgetManager.getInstance(context) ?: return
@@ -35,7 +38,7 @@ object WidgetRenderer {
             ComponentName(context, TaskManagerWidgetProvider::class.java)
         )
         if (ids.isEmpty()) return
-        val views = build(context, cpuPercent, ramUsed, ramTotal, currentUA, live)
+        val views = build(context, cpuPercent, ramUsed, ramTotal, currentUA, tempTenthsC, live)
         manager.updateAppWidget(ids, views)
     }
 
@@ -45,6 +48,7 @@ object WidgetRenderer {
         ramUsed: Long,
         ramTotal: Long,
         currentUA: Long,
+        tempTenthsC: Int,
         live: Boolean,
     ): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.taskmanager_widget)
@@ -62,7 +66,11 @@ object WidgetRenderer {
         )
         views.setTextViewText(
             R.id.widget_current_value,
-            if (currentUA >= 0L) WidgetStats.formatCurrent(currentUA) else noData
+            if (currentUA != -1L) WidgetStats.formatCurrent(currentUA) else noData
+        )
+        views.setTextViewText(
+            R.id.widget_temp_value,
+            if (tempTenthsC != -1) WidgetStats.formatTemperature(tempTenthsC) else noData
         )
         views.setViewVisibility(
             R.id.widget_live_badge,
