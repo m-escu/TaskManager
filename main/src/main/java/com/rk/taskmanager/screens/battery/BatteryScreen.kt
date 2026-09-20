@@ -192,7 +192,7 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
     val timeAxisFormatter = remember(periodDays) {
         CartesianValueFormatter { _, value, _ ->
             val dt = LocalDateTime.ofInstant(
-                Instant.ofEpochMinute(value.toLong()),
+                Instant.ofEpochSecond(value.toLong() * 60L),
                 ZoneId.systemDefault(),
             )
             dt.format(
