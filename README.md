@@ -7,7 +7,6 @@ This is the personal fork maintained by **m-escu** — monetization-free,
 a dual-mode home-screen widget and threshold alerts.
 
 [![CI](https://github.com/m-escu/TaskManager/actions/workflows/android-ci.yml/badge.svg)](https://github.com/m-escu/TaskManager/actions/workflows/android-ci.yml)
-[<img src="https://shields.rbtlog.dev/simple/com.rk.taskmanager" alt="RB shield">](https://shields.rbtlog.dev/com.rk.taskmanager)
 
 > [!IMPORTANT]
 > Task Manager requires Shizuku/root to work.
@@ -83,6 +82,29 @@ bash taskmanagerd/host_tests/build_host.sh && python3 taskmanagerd/host_tests/te
   ([Play Store](https://play.google.com/store/apps/details?id=com.rk.taskmanager))
 - m-escu — fork maintainer; see [CHANGELOG.md](CHANGELOG.md) for everything
   this fork changes.
+
+# License
+
+This fork is distributed under the same [Apache License 2.0](LICENSE) as the
+upstream project.
+
+- Upstream **Task Manager** © [Rohitkushvaha01](https://github.com/Rohitkushvaha01);
+  the `LICENSE` file is carried forward verbatim, and the original author is
+  credited above and in the app's About screen.
+- Modifications and new components in this fork (daemon protocol v2, battery
+  and network monitoring, the widget and QS tile, threshold alerts, tests)
+  © m-escu.
+- The previously paywalled functionality was **independently re-implemented**
+  for this fork. Upstream's monetization layer (AdMob, billing, Play
+  services) was never part of the public source — it was merged in from a
+  separate closed component at upstream build time and is entirely absent
+  here. The fork opens no sockets (no INTERNET permission;
+  `ACCESS_NETWORK_STATE` only reads network state).
+- Not affiliated with, endorsed by, or sponsored by the upstream author;
+  the upstream name is used solely for attribution.
+- All changes relative to upstream are documented in
+  [CHANGELOG.md](CHANGELOG.md). No `NOTICE` file exists upstream, so none
+  is required.
 
 ## Find this app useful? :heart:
 Support the original by giving it a star :star:
