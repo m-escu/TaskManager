@@ -17,9 +17,13 @@ GitHub Actions run (no store releases). Format roughly follows
 - New JVM unit tests: `WidgetStatsTest` (locks down the vendor-current sign
   conventions that caused the fork13/fork16 bugs) and
   `LocaleCompletenessTest` (every default string key must exist in all 5
-  locales — the fork keeps them in lockstep by hand; now enforced by CI).
+  locales — enforced by CI, no longer taken on trust).
 - Fixed the never-executed library androidTest template (wrong package
   assertion), removed the dead app-module androidTest stub.
+- Locale backfill driven by the new completeness test: Turkish gained 128
+  long-missing translations (drifted behind during the early fork rounds),
+  Russian/Chinese/pt-BR gained 18 each — all five locales are now truly in
+  lockstep, not just assumed to be.
 - README rewritten for the fork; this CHANGELOG added.
 
 ## [1.15.0-fork17] (76)

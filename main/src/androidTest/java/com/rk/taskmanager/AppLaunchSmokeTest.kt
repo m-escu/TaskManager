@@ -2,7 +2,7 @@ package com.rk.taskmanager
 
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -23,7 +23,13 @@ class AppLaunchSmokeTest {
             // Give the async startup paths time to run: compose first frame,
             // graphUpdater collector, root/Shizuku probing, optional FGS.
             Thread.sleep(4_000)
-            assertNotEquals(ActivityScenario.State.DESTROYED, scenario.state)
+            // onActivity throws IllegalStateException if the activity was
+            // destroyed, and isFinishing catches a graceful self-finish —
+            // version-proof alive check (ActivityScenario.State does not
+            // exist in every androidx.test:core release).
+            scenario.onActivity { activity ->
+                assertFalse("MainActivity is finishing after startup", activity.isFinishing)
+            }
         }
     }
 }

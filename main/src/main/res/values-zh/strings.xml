@@ -370,4 +370,22 @@
 
     <!-- fork16: 电池实时图表 -->
     <string name="batt_live_hint">实时读数，每秒刷新一次。</string>
+    <string name="battery_current">电池电流</string>
+    <string name="battery_current_microamps">微安 (µA)</string>
+    <string name="battery_current_microamps_desc">设备以微安为单位报告电流</string>
+    <string name="battery_current_milliamps">毫安 (mA)</string>
+    <string name="battery_current_milliamps_desc">设备以毫安为单位报告电流</string>
+    <string name="battery_screen_title">电池</string>
+    <string name="imperial">英制</string>
+    <string name="imperial_desc">华氏度 (°F)</string>
+    <string name="metric">公制</string>
+    <string name="metric_desc">摄氏度 (°C)</string>
+    <string name="net_screen_title">网络</string>
+    <string name="screen_rebuilt_notice">此页面正在以原生方式重写，将在后续更新中回归。</string>
+    <string name="task_manager_pro_uppercase">TASK MANAGER PRO</string>
+    <string name="unit_system">单位制</string>
+    <string name="units">单位</string>
+    <string name="units_desc">应用中使用的度量单位</string>
+    <string name="usage_notif">用量通知</string>
+    <string name="usage_notif_Desc">显示一条通知，以便在后台查看资源用量</string>
 </resources>

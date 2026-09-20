@@ -360,4 +360,22 @@
 
     <!-- fork16: живые графики батареи -->
     <string name="batt_live_hint">Данные в реальном времени, обновление каждую секунду.</string>
+    <string name="battery_current">Ток батареи</string>
+    <string name="battery_current_microamps">Микроамперы (мкА)</string>
+    <string name="battery_current_microamps_desc">Устройство сообщает ток в микроамперах</string>
+    <string name="battery_current_milliamps">Миллиамперы (мА)</string>
+    <string name="battery_current_milliamps_desc">Устройство сообщает ток в миллиамперах</string>
+    <string name="battery_screen_title">Батарея</string>
+    <string name="imperial">Имперская</string>
+    <string name="imperial_desc">Фаренгейты (°F)</string>
+    <string name="metric">Метрическая</string>
+    <string name="metric_desc">Цельсия (°C)</string>
+    <string name="net_screen_title">Сеть</string>
+    <string name="screen_rebuilt_notice">Этот экран переписывается нативно в этом форке и вернётся в ближайшем обновлении.</string>
+    <string name="task_manager_pro_uppercase">TASK MANAGER PRO</string>
+    <string name="unit_system">Система единиц</string>
+    <string name="units">Единицы</string>
+    <string name="units_desc">Единицы измерения, используемые в приложении</string>
+    <string name="usage_notif">Уведомление об использовании</string>
+    <string name="usage_notif_Desc">Показывать уведомление для просмотра использования ресурсов в фоне</string>
 </resources>

@@ -371,4 +371,22 @@
 
     <!-- fork16: graficos ao vivo da bateria -->
     <string name="batt_live_hint">Leituras ao vivo, atualizadas a cada segundo.</string>
+    <string name="battery_current">Corrente da bateria</string>
+    <string name="battery_current_microamps">Microampères (µA)</string>
+    <string name="battery_current_microamps_desc">O dispositivo informa a corrente em microampères</string>
+    <string name="battery_current_milliamps">Miliampères (mA)</string>
+    <string name="battery_current_milliamps_desc">O dispositivo informa a corrente em miliampères</string>
+    <string name="battery_screen_title">Bateria</string>
+    <string name="imperial">Imperial</string>
+    <string name="imperial_desc">Fahrenheit (°F)</string>
+    <string name="metric">Métrico</string>
+    <string name="metric_desc">Celsius (°C)</string>
+    <string name="net_screen_title">Rede</string>
+    <string name="screen_rebuilt_notice">Esta tela está sendo reconstruída nativamente neste fork e voltará em uma atualização futura.</string>
+    <string name="task_manager_pro_uppercase">TASK MANAGER PRO</string>
+    <string name="unit_system">Sistema de unidades</string>
+    <string name="units">Unidades</string>
+    <string name="units_desc">Unidades de medida usadas no aplicativo</string>
+    <string name="usage_notif">Notificação de uso</string>
+    <string name="usage_notif_Desc">Mostra uma notificação para ver o uso de recursos em segundo plano</string>
 </resources>
