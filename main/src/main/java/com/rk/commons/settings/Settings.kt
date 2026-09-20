@@ -54,6 +54,19 @@ object Settings {
      *  confirmation before anything happens. */
     var killSystemApps by BooleanPref(key = "kill_system_apps", default = true)
 
+    /**
+     * Battery threshold alerts, evaluated by the live monitor service on
+     * every tick. Master switch + delivery (0 = notification, 1 = toast,
+     * 2 = both) and, per metric, the threshold (discharge mA / °C) and how
+     * long it must stay exceeded before a warning fires (seconds).
+     */
+    var batteryAlerts by BooleanPref(key = "battery_alerts", default = false)
+    var batteryAlertDelivery by IntPref(key = "battery_alert_delivery", default = 0)
+    var batteryDrainMa by IntPref(key = "battery_drain_ma", default = 500)
+    var batteryDrainSustainSec by IntPref(key = "battery_drain_sustain_sec", default = 60)
+    var batteryTempC by IntPref(key = "battery_temp_c", default = 43)
+    var batteryTempSustainSec by IntPref(key = "battery_temp_sustain_sec", default = 60)
+
     /** Process-list name colors (ARGB). 0 = theme default text color. */
     var procColorUser by IntPref(key = "proc_color_user", default = 0)
     var procColorSystem by IntPref(key = "proc_color_system", default = 0xFFE57373.toInt())

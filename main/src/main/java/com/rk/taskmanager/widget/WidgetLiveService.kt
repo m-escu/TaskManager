@@ -207,6 +207,11 @@ class WidgetLiveService : Service() {
                     lastCurrentUA = battery.currentUA
                     lastTempTenthsC = battery.tempTenthsC
 
+                    // Threshold alerts ride along on the 1 Hz battery sample
+                    // (drain + temperature, each with its own threshold and
+                    // sustain window). Cheap no-op while the feature is off.
+                    BatteryAlerts.evaluate(this@WidgetLiveService, battery)
+
                     // The notification text updates on its own cadence in
                     // BOTH modes (live session and permanent notification),
                     // re-read every tick so changes apply without a restart.

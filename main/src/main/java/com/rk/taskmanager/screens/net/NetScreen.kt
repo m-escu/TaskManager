@@ -331,8 +331,11 @@ fun NetScreen(modifier: Modifier = Modifier) {
     var refreshTick by remember { mutableIntStateOf(0) }
     var apps by remember { mutableStateOf<List<AppNetUsage>>(emptyList()) }
 
-    // Per-app display mode: period totals (default) or live transfer rates.
-    var liveMode by rememberSaveable { mutableStateOf(false) }
+    // Per-app display mode: live transfer rates (default — the user opens
+    // the tab to see what is transferring NOW) or period totals. Forced off
+    // when Usage access is missing; the user's choice survives via
+    // rememberSaveable while the process is alive.
+    var liveMode by rememberSaveable { mutableStateOf(true) }
     var rates by remember { mutableStateOf<List<AppNetUsage>>(emptyList()) }
 
     // The appop can only be granted while this screen is paused (either in

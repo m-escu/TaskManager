@@ -342,4 +342,30 @@
     <string name="start_at_boot_desc">Restaurar a notificação permanente após o dispositivo reiniciar</string>
     <string name="start_at_boot">Iniciar na inicialização</string>
 
+
+    <!-- fork15: alertas por limite da bateria -->
+    <string name="batt_alerts_group">Alertas da bateria</string>
+    <string name="batt_alerts_toggle">Alertas da bateria</string>
+    <string name="batt_alerts_toggle_desc">Avisa quando a corrente de descarga ou a temperatura da bateria fica acima de um limite pelo tempo escolhido. Avaliado pelo monitor ativo; a notificação do monitor ativo precisa estar em execução.</string>
+    <string name="batt_alert_delivery">Entrega do alerta</string>
+    <string name="batt_alert_delivery_desc">Onde os avisos aparecem. Atual: %1$s.</string>
+    <string name="batt_alert_delivery_notification">Notificação</string>
+    <string name="batt_alert_delivery_toast">Aviso rápido</string>
+    <string name="batt_alert_delivery_both">Notificação e aviso rápido</string>
+    <string name="batt_drain_threshold">Limite de descarga</string>
+    <string name="batt_drain_threshold_desc">Corrente de descarga considerada alta. Atual: %1$d mA.</string>
+    <string name="batt_drain_sustain">Duração da descarga</string>
+    <string name="batt_drain_sustain_desc">Quanto tempo a corrente deve ficar acima do limite. Atual: %1$s.</string>
+    <string name="batt_temp_threshold">Limite de temperatura</string>
+    <string name="batt_temp_threshold_desc">Temperatura da bateria considerada alta. Atual: %1$d \u00b0C.</string>
+    <string name="batt_temp_sustain">Duração da temperatura</string>
+    <string name="batt_temp_sustain_desc">Quanto tempo a temperatura deve ficar acima do limite. Atual: %1$s.</string>
+    <string name="batt_drain_input_label">Limite (mA)</string>
+    <string name="batt_temp_input_label">Limite (\u00b0C)</string>
+    <string name="batt_sustain_input_label">Sustentado por</string>
+    <string name="batt_threshold_range_hint">Digite um valor entre %1$d e %2$d</string>
+    <string name="batt_alert_title">Aviso da bateria</string>
+    <string name="batt_alert_channel">Alertas da bateria</string>
+    <string name="batt_alert_drain">Descarga alta da bateria: %1$s (acima de %2$s por %3$s)</string>
+    <string name="batt_alert_temp">Temperatura alta da bateria: %1$s (acima de %2$s por %3$s)</string>
 </resources>

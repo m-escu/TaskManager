@@ -207,4 +207,30 @@
     <string name="start_at_boot_desc">Cihaz yeniden başladığında kalıcı bildirimi geri yükle</string>
     <string name="start_at_boot">Açılışta başlat</string>
 
+
+    <!-- fork15: pil esik uyarilari -->
+    <string name="batt_alerts_group">Pil uyarıları</string>
+    <string name="batt_alerts_toggle">Pil uyarıları</string>
+    <string name="batt_alerts_toggle_desc">Deşarj akımı veya pil sıcaklığı seçilen süre boyunca eşiğin üzerinde kaldığında uyar. Canlı izleyici değerlendirir; canlı izleyici bildiriminin çalışıyor olması gerekir.</string>
+    <string name="batt_alert_delivery">Uyarı şekli</string>
+    <string name="batt_alert_delivery_desc">Uyarıların gösterileceği yer. Şu an: %1$s.</string>
+    <string name="batt_alert_delivery_notification">Bildirim</string>
+    <string name="batt_alert_delivery_toast">Kısa mesaj</string>
+    <string name="batt_alert_delivery_both">Bildirim ve kısa mesaj</string>
+    <string name="batt_drain_threshold">Deşarj eşiği</string>
+    <string name="batt_drain_threshold_desc">Yüksek sayılan deşarj akımı. Şu an: %1$d mA.</string>
+    <string name="batt_drain_sustain">Deşarj süresi</string>
+    <string name="batt_drain_sustain_desc">Akımın eşik üzerinde kalması gereken süre. Şu an: %1$s.</string>
+    <string name="batt_temp_threshold">Sıcaklık eşiği</string>
+    <string name="batt_temp_threshold_desc">Yüksek sayılan pil sıcaklığı. Şu an: %1$d \u00b0C.</string>
+    <string name="batt_temp_sustain">Sıcaklık süresi</string>
+    <string name="batt_temp_sustain_desc">Sıcaklığın eşik üzerinde kalması gereken süre. Şu an: %1$s.</string>
+    <string name="batt_drain_input_label">Eşik (mA)</string>
+    <string name="batt_temp_input_label">Eşik (\u00b0C)</string>
+    <string name="batt_sustain_input_label">Süre</string>
+    <string name="batt_threshold_range_hint">%1$d ile %2$d arasında bir değer girin</string>
+    <string name="batt_alert_title">Pil uyarısı</string>
+    <string name="batt_alert_channel">Pil uyarıları</string>
+    <string name="batt_alert_drain">Pil deşarjı yüksek: %1$s (%2$s üzerinde, %3$s)</string>
+    <string name="batt_alert_temp">Pil sıcaklığı yüksek: %1$s (%2$s üzerinde, %3$s)</string>
 </resources>

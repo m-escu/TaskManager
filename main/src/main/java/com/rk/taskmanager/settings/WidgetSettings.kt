@@ -33,6 +33,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.rk.commons.settings.Settings
 import com.rk.commons.strings
+import com.rk.components.RadioBottomSheet
+import com.rk.components.RadioOption
 import com.rk.components.SettingsToggle
 import com.rk.components.compose.preferences.base.PreferenceGroup
 import com.rk.components.compose.preferences.base.PreferenceLayout
@@ -53,6 +55,11 @@ fun WidgetSettings(modifier: Modifier = Modifier) {
 
     var showIntervalDialog by remember { mutableStateOf(false) }
     var showNotifDialog by remember { mutableStateOf(false) }
+    var showDeliverySheet by remember { mutableStateOf(false) }
+    var showDrainDialog by remember { mutableStateOf(false) }
+    var showTempDialog by remember { mutableStateOf(false) }
+    var showDrainSustainDialog by remember { mutableStateOf(false) }
+    var showTempSustainDialog by remember { mutableStateOf(false) }
 
     val intervalSeconds = remember { mutableIntStateOf(WidgetRefreshScheduler.intervalSeconds()) }
     val notifSeconds = remember { mutableIntStateOf(Settings.notifRefreshSeconds) }
@@ -141,6 +148,59 @@ fun WidgetSettings(modifier: Modifier = Modifier) {
                 sideEffect = { enabled -> Settings.startAtBoot = enabled },
             )
         }
+
+        // Battery threshold alerts (fork15). Evaluated by the live monitor
+        // service on every tick, so they only work while that service runs
+        // (permanent notification on, or an active QS-tile session) — the
+        // toggle description says so explicitly.
+        PreferenceGroup(heading = stringResource(strings.batt_alerts_group)) {
+            SettingsToggle(
+                label = stringResource(strings.batt_alerts_toggle),
+                description = stringResource(strings.batt_alerts_toggle_desc),
+                default = Settings.batteryAlerts,
+                showSwitch = true,
+                sideEffect = { enabled -> Settings.batteryAlerts = enabled },
+            )
+
+            val deliveryLabel = when (Settings.batteryAlertDelivery) {
+                1 -> stringResource(strings.batt_alert_delivery_toast)
+                2 -> stringResource(strings.batt_alert_delivery_both)
+                else -> stringResource(strings.batt_alert_delivery_notification)
+            }
+            ActionRow(
+                title = stringResource(strings.batt_alert_delivery),
+                description = stringResource(strings.batt_alert_delivery_desc, deliveryLabel),
+                onClick = { showDeliverySheet = true },
+            )
+
+            ActionRow(
+                title = stringResource(strings.batt_drain_threshold),
+                description = stringResource(strings.batt_drain_threshold_desc, Settings.batteryDrainMa),
+                onClick = { showDrainDialog = true },
+            )
+            ActionRow(
+                title = stringResource(strings.batt_drain_sustain),
+                description = stringResource(
+                    strings.batt_drain_sustain_desc,
+                    formatInterval(Settings.batteryDrainSustainSec),
+                ),
+                onClick = { showDrainSustainDialog = true },
+            )
+
+            ActionRow(
+                title = stringResource(strings.batt_temp_threshold),
+                description = stringResource(strings.batt_temp_threshold_desc, Settings.batteryTempC),
+                onClick = { showTempDialog = true },
+            )
+            ActionRow(
+                title = stringResource(strings.batt_temp_sustain),
+                description = stringResource(
+                    strings.batt_temp_sustain_desc,
+                    formatInterval(Settings.batteryTempSustainSec),
+                ),
+                onClick = { showTempSustainDialog = true },
+            )
+        }
     }
 
     if (showIntervalDialog) {
@@ -179,6 +239,94 @@ fun WidgetSettings(modifier: Modifier = Modifier) {
                 Settings.notifRefreshSeconds = seconds
             },
             onDismiss = { showNotifDialog = false },
+        )
+    }
+
+    // Alert delivery: notification / toast / both.
+    if (showDeliverySheet) {
+        val options = listOf(
+            RadioOption(
+                0,
+                stringResource(strings.batt_alert_delivery_notification),
+                stringResource(strings.batt_alert_delivery_notification),
+            ),
+            RadioOption(
+                1,
+                stringResource(strings.batt_alert_delivery_toast),
+                stringResource(strings.batt_alert_delivery_toast),
+            ),
+            RadioOption(
+                2,
+                stringResource(strings.batt_alert_delivery_both),
+                stringResource(strings.batt_alert_delivery_both),
+            ),
+        )
+        RadioBottomSheet(
+            isVisible = true,
+            onDismiss = { showDeliverySheet = false },
+            options = options,
+            selectedOption = options.firstOrNull { it.id == Settings.batteryAlertDelivery },
+            onOptionSelected = { picked ->
+                Settings.batteryAlertDelivery = picked.id
+                showDeliverySheet = false
+            },
+            title = stringResource(strings.batt_alert_delivery),
+        )
+    }
+
+    if (showDrainDialog) {
+        NumberInputDialog(
+            title = stringResource(strings.batt_drain_threshold),
+            inputLabel = stringResource(strings.batt_drain_input_label),
+            initialSeconds = Settings.batteryDrainMa,
+            minSeconds = 100,
+            maxSeconds = 10000,
+            showUnitToggle = false,
+            rangeHint = stringResource(strings.batt_threshold_range_hint, 100, 10000),
+            onConfirm = { Settings.batteryDrainMa = it },
+            onDismiss = { showDrainDialog = false },
+        )
+    }
+
+    if (showDrainSustainDialog) {
+        NumberInputDialog(
+            title = stringResource(strings.batt_drain_sustain),
+            inputLabel = stringResource(strings.batt_sustain_input_label),
+            initialSeconds = Settings.batteryDrainSustainSec,
+            minSeconds = 5,
+            maxSeconds = 86_400,
+            showUnitToggle = true,
+            rangeHint = stringResource(strings.interval_range_hint, 5, 24),
+            onConfirm = { Settings.batteryDrainSustainSec = it },
+            onDismiss = { showDrainSustainDialog = false },
+        )
+    }
+
+    if (showTempDialog) {
+        NumberInputDialog(
+            title = stringResource(strings.batt_temp_threshold),
+            inputLabel = stringResource(strings.batt_temp_input_label),
+            initialSeconds = Settings.batteryTempC,
+            minSeconds = 30,
+            maxSeconds = 60,
+            showUnitToggle = false,
+            rangeHint = stringResource(strings.batt_threshold_range_hint, 30, 60),
+            onConfirm = { Settings.batteryTempC = it },
+            onDismiss = { showTempDialog = false },
+        )
+    }
+
+    if (showTempSustainDialog) {
+        NumberInputDialog(
+            title = stringResource(strings.batt_temp_sustain),
+            inputLabel = stringResource(strings.batt_sustain_input_label),
+            initialSeconds = Settings.batteryTempSustainSec,
+            minSeconds = 5,
+            maxSeconds = 86_400,
+            showUnitToggle = true,
+            rangeHint = stringResource(strings.interval_range_hint, 5, 24),
+            onConfirm = { Settings.batteryTempSustainSec = it },
+            onDismiss = { showTempSustainDialog = false },
         )
     }
 }

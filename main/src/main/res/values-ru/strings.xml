@@ -331,4 +331,30 @@
     <string name="start_at_boot_desc">Восстанавливать постоянное уведомление после перезагрузки устройства</string>
     <string name="start_at_boot">Запускать при включении</string>
 
+
+    <!-- fork15: оповещения по порогам батареи -->
+    <string name="batt_alerts_group">Оповещения батареи</string>
+    <string name="batt_alerts_toggle">Оповещения батареи</string>
+    <string name="batt_alerts_toggle_desc">Предупреждать, когда ток разряда или температура батареи держатся выше порога заданное время. Оценивается живым монитором — уведомление живого монитора должно работать.</string>
+    <string name="batt_alert_delivery">Способ оповещения</string>
+    <string name="batt_alert_delivery_desc">Куда выводить предупреждения. Сейчас: %1$s.</string>
+    <string name="batt_alert_delivery_notification">Уведомление</string>
+    <string name="batt_alert_delivery_toast">Всплывающее сообщение</string>
+    <string name="batt_alert_delivery_both">Уведомление и всплывающее сообщение</string>
+    <string name="batt_drain_threshold">Порог разряда</string>
+    <string name="batt_drain_threshold_desc">Ток разряда, считающийся высоким. Сейчас: %1$d мА.</string>
+    <string name="batt_drain_sustain">Длительность разряда</string>
+    <string name="batt_drain_sustain_desc">Как долго ток должен держаться выше порога. Сейчас: %1$s.</string>
+    <string name="batt_temp_threshold">Порог температуры</string>
+    <string name="batt_temp_threshold_desc">Температура батареи, считающаяся высокой. Сейчас: %1$d \u00b0C.</string>
+    <string name="batt_temp_sustain">Длительность нагрева</string>
+    <string name="batt_temp_sustain_desc">Как долго температура должна держаться выше порога. Сейчас: %1$s.</string>
+    <string name="batt_drain_input_label">Порог (мА)</string>
+    <string name="batt_temp_input_label">Порог (\u00b0C)</string>
+    <string name="batt_sustain_input_label">Держится в течение</string>
+    <string name="batt_threshold_range_hint">Введите значение от %1$d до %2$d</string>
+    <string name="batt_alert_title">Предупреждение о батарее</string>
+    <string name="batt_alert_channel">Оповещения батареи</string>
+    <string name="batt_alert_drain">Высокий разряд батареи: %1$s (выше %2$s уже %3$s)</string>
+    <string name="batt_alert_temp">Высокая температура батареи: %1$s (выше %2$s уже %3$s)</string>
 </resources>

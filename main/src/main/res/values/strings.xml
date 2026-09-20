@@ -362,4 +362,30 @@
     <string name="start_at_boot_desc">Restore the permanent notification after the device restarts</string>
     <string name="start_at_boot">Start at boot</string>
 
+
+    <!-- fork15: battery threshold alerts (drain current + temperature) -->
+    <string name="batt_alerts_group">Battery alerts</string>
+    <string name="batt_alerts_toggle">Battery alerts</string>
+    <string name="batt_alerts_toggle_desc">Warn when the discharge current or the battery temperature stays above a threshold for a chosen time. Evaluated by the live monitor, so the live-monitor notification must keep running.</string>
+    <string name="batt_alert_delivery">Alert delivery</string>
+    <string name="batt_alert_delivery_desc">Where threshold warnings are delivered. Currently: %1$s.</string>
+    <string name="batt_alert_delivery_notification">Notification</string>
+    <string name="batt_alert_delivery_toast">Toast</string>
+    <string name="batt_alert_delivery_both">Notification and toast</string>
+    <string name="batt_drain_threshold">Drain threshold</string>
+    <string name="batt_drain_threshold_desc">Discharge current that counts as high. Currently: %1$d mA.</string>
+    <string name="batt_drain_sustain">Drain duration</string>
+    <string name="batt_drain_sustain_desc">How long the current must stay above the threshold before a warning. Currently: %1$s.</string>
+    <string name="batt_temp_threshold">Temperature threshold</string>
+    <string name="batt_temp_threshold_desc">Battery temperature that counts as high. Currently: %1$d \u00b0C.</string>
+    <string name="batt_temp_sustain">Temperature duration</string>
+    <string name="batt_temp_sustain_desc">How long the temperature must stay above the threshold before a warning. Currently: %1$s.</string>
+    <string name="batt_drain_input_label">Threshold (mA)</string>
+    <string name="batt_temp_input_label">Threshold (\u00b0C)</string>
+    <string name="batt_sustain_input_label">Sustained for</string>
+    <string name="batt_threshold_range_hint">Enter a value between %1$d and %2$d</string>
+    <string name="batt_alert_title">Battery warning</string>
+    <string name="batt_alert_channel">Battery alerts</string>
+    <string name="batt_alert_drain">High battery drain: %1$s (above %2$s for %3$s)</string>
+    <string name="batt_alert_temp">High battery temperature: %1$s (above %2$s for %3$s)</string>
 </resources>

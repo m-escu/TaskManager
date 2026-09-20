@@ -20,6 +20,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -129,9 +130,14 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
     var periodDays by rememberSaveable { mutableIntStateOf(1) }
     var sampleCount by remember { mutableIntStateOf(0) }
 
-    // Bumped when the user resets the history: a fresh producer has no
-    // model, so the charts blank out immediately instead of keeping the
-    // pre-reset curve until the next sample arrives.
+    // Bumped when the user resets the history. Vico 2.0.3 FORBIDS feeding a
+    // chart slot a new producer instance while it stays composed (its
+    // collectAsState throws IllegalStateException "A new
+    // CartesianChartModelProducer was provided..."), so every UsageChart is
+    // wrapped in key(historyGeneration): the whole host subtree — including
+    // Vico's internal producer-identity state — is torn down and rebuilt
+    // together with the fresh producer, and the charts render empty
+    // immediately after a reset instead of keeping the old curve.
     var historyGeneration by remember { mutableIntStateOf(0) }
     val capacityProducer = remember(historyGeneration) { CartesianChartModelProducer() }
     val currentProducer = remember(historyGeneration) { CartesianChartModelProducer() }
@@ -231,12 +237,14 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
             modifier = Modifier.padding(horizontal = 16.dp)
         )
 
-        UsageChart(
-            modelProducer = capacityProducer,
-            lineColors = listOf(MaterialTheme.colorScheme.primary),
-            modifier = modifier.fillMaxWidth(),
-            bottomAxisFormatter = timeAxisFormatter,
-        )
+        key(historyGeneration) {
+            UsageChart(
+                modelProducer = capacityProducer,
+                lineColors = listOf(MaterialTheme.colorScheme.primary),
+                modifier = modifier.fillMaxWidth(),
+                bottomAxisFormatter = timeAxisFormatter,
+            )
+        }
 
         Row(
             modifier = Modifier
@@ -279,15 +287,17 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
-            UsageChart(
-                modelProducer = currentProducer,
-                lineColors = listOf(MaterialTheme.colorScheme.tertiary),
-                modifier = modifier.fillMaxWidth(),
-                rangeProvider = ChartConfig.AutoRangeProvider,
-                valueFormatter = ChartConfig.PlainStartAxisValueFormatter,
-                markerValueFormatter = ChartConfig.PlainMarkerValueFormatter,
-                bottomAxisFormatter = timeAxisFormatter,
-            )
+            key(historyGeneration) {
+                UsageChart(
+                    modelProducer = currentProducer,
+                    lineColors = listOf(MaterialTheme.colorScheme.tertiary),
+                    modifier = modifier.fillMaxWidth(),
+                    rangeProvider = ChartConfig.AutoRangeProvider,
+                    valueFormatter = ChartConfig.PlainStartAxisValueFormatter,
+                    markerValueFormatter = ChartConfig.PlainMarkerValueFormatter,
+                    bottomAxisFormatter = timeAxisFormatter,
+                )
+            }
         }
 
         Spacer(modifier = Modifier.padding(vertical = 4.dp))

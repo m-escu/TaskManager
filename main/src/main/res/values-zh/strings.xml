@@ -341,4 +341,30 @@
     <string name="start_at_boot_desc">设备重启后恢复常驻通知</string>
     <string name="start_at_boot">开机自启</string>
 
+
+    <!-- fork15: 电池阈值警报 -->
+    <string name="batt_alerts_group">电池警报</string>
+    <string name="batt_alerts_toggle">电池警报</string>
+    <string name="batt_alerts_toggle_desc">当放电电流或电池温度在设定时间内持续超过阈值时发出警告。由实时监控评估，需保持实时监控通知运行。</string>
+    <string name="batt_alert_delivery">警报方式</string>
+    <string name="batt_alert_delivery_desc">警告的展示方式。当前：%1$s。</string>
+    <string name="batt_alert_delivery_notification">通知</string>
+    <string name="batt_alert_delivery_toast">悬浮提示</string>
+    <string name="batt_alert_delivery_both">通知和悬浮提示</string>
+    <string name="batt_drain_threshold">放电阈值</string>
+    <string name="batt_drain_threshold_desc">视为偏高的放电电流。当前：%1$d mA。</string>
+    <string name="batt_drain_sustain">放电持续时间</string>
+    <string name="batt_drain_sustain_desc">电流需持续超过阈值多久才会警告。当前：%1$s。</string>
+    <string name="batt_temp_threshold">温度阈值</string>
+    <string name="batt_temp_threshold_desc">视为偏高的电池温度。当前：%1$d \u00b0C。</string>
+    <string name="batt_temp_sustain">温度持续时间</string>
+    <string name="batt_temp_sustain_desc">温度需持续超过阈值多久才会警告。当前：%1$s。</string>
+    <string name="batt_drain_input_label">阈值 (mA)</string>
+    <string name="batt_temp_input_label">阈值 (\u00b0C)</string>
+    <string name="batt_sustain_input_label">持续时间</string>
+    <string name="batt_threshold_range_hint">请输入 %1$d 到 %2$d 之间的数值</string>
+    <string name="batt_alert_title">电池警告</string>
+    <string name="batt_alert_channel">电池警报</string>
+    <string name="batt_alert_drain">电池放电过高：%1$s（已超过 %2$s 持续 %3$s）</string>
+    <string name="batt_alert_temp">电池温度过高：%1$s（已超过 %2$s 持续 %3$s）</string>
 </resources>
