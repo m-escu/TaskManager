@@ -14,7 +14,7 @@ import com.rk.taskmanager.ui.theme.cosmos.Cosmos
  */
 @Keep
 object VoidTheme : Theme() {
-    override val nameRes: Int = strings.void
+    override val nameRes: Int = strings.void_theme
 
     private val Black = Color(0xFF000000)
     private val OnBlack = Color(0xFFE8E8EA)

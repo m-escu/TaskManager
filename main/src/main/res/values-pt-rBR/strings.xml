@@ -284,7 +284,7 @@
     <string name="live_notif_title">Monitor ao vivo do Task Manager</string>
     <string name="live_notif_text">CPU %1$d%% \u00b7 RAM %2$d%% \u00b7 Bateria %3$d%%</string>
     <!-- Tema Void + configurações de atualização do widget (fork10) -->
-    <string name="void">Void</string>
+    <string name="void_theme">Void</string>
     <string name="widget">Widget</string>
     <string name="widget_desc">Widget na tela inicial</string>
     <string name="widget_refresh_title">Intervalo de atualização</string>
