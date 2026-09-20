@@ -137,4 +137,14 @@
     <string name="net_no_data">Bu dönemde trafik kaydedilmedi.</string>
     <string name="net_diag_prefix">Teşhis: %1$s</string>
     <string name="net_showing_top">En yüksek ilk %1$d uygulama gösteriliyor.</string>
+    <!-- Ana ekran widget\u2019\u0131 (ge\u00e7ici ve canl\u0131 modlar) ve QS kutusu -->
+    <string name="widget_cpu">CPU</string>
+    <string name="widget_ram">RAM</string>
+    <string name="widget_battery">Pil</string>
+    <string name="widget_live_badge">CANLI</string>
+    <string name="widget_no_data">\u2013</string>
+    <string name="qs_tile_live">Canlı izleyici</string>
+    <string name="live_notif_channel">Canlı izleyici</string>
+    <string name="live_notif_title">Task Manager canlı izleyici</string>
+    <string name="live_notif_text">CPU %1$d%% \u00b7 RAM %2$d%% \u00b7 Pil %3$d%%</string>
 </resources>

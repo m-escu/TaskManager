@@ -262,4 +262,14 @@
     <string name="net_no_data">За этот период трафик не зафиксирован.</string>
     <string name="net_diag_prefix">Диагностика: %1$s</string>
     <string name="net_showing_top">Показаны первые %1$d приложений.</string>
+    <!-- Виджет на главном экране (обычный и живой режимы) и плитка QS -->
+    <string name="widget_cpu">ЦП</string>
+    <string name="widget_ram">ОЗУ</string>
+    <string name="widget_battery">Батарея</string>
+    <string name="widget_live_badge">ОНЛАЙН</string>
+    <string name="widget_no_data">\u2013</string>
+    <string name="qs_tile_live">Мониторинг в реальном времени</string>
+    <string name="live_notif_channel">Мониторинг в реальном времени</string>
+    <string name="live_notif_title">Task Manager: мониторинг в реальном времени</string>
+    <string name="live_notif_text">ЦП %1$d%% \u00b7 ОЗУ %2$d%% \u00b7 Батарея %3$d%%</string>
 </resources>

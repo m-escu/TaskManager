@@ -16,6 +16,15 @@
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
 
+    <!-- Home-screen widget: POST_NOTIFICATIONS keeps the live-mode FGS
+         notification visible on API 33+; the FGS permissions back
+         WidgetLiveService (foregroundServiceType=specialUse, declared
+         below). The ephemeral widget mode needs none of these. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+
     <application
         android:allowBackup="true"
         android:name=".TaskManager"
@@ -45,5 +54,44 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Home-screen widget: ephemeral mode. Updates are system-scheduled
+             (30-minute floor); no service is involved in this mode. -->
+        <receiver
+            android:name=".widget.TaskManagerWidgetProvider"
+            android:exported="false"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/taskmanager_widget_info" />
+        </receiver>
+
+        <!-- Live widget mode: 1 Hz public-API samples pushed to every
+             widget and mirrored into a persistent notification. Toggled
+             from the QS tile below. -->
+        <service
+            android:name=".widget.WidgetLiveService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Live system monitor that keeps the home-screen widget updated at 1 Hz." />
+        </service>
+
+        <!-- QS tile: toggles the live widget mode. TileService.onClick runs
+             in a foreground context, so FGS starts from it are allowed. -->
+        <service
+            android:name=".widget.LiveTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_taskmanager_foreground"
+            android:label="@string/qs_tile_live"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

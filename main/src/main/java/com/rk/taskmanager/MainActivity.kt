@@ -1,5 +1,6 @@
 package com.rk.taskmanager
 
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -54,6 +55,15 @@ class MainActivity : ComponentActivity() {
 
         scope = this.lifecycleScope
         instance = this
+
+        // Live widget mode shows a persistent FGS notification; ask once so
+        // it is actually visible on API 33+ (no-op below 33).
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
 
 
         GlobalScope.launch { graphUpdater(this@MainActivity) }

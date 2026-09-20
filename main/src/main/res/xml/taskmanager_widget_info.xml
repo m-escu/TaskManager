@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ephemeral widget mode: the system refreshes at its 30-minute floor.
+     Fast updates are the job of the live FGS mode (QS tile). -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp"
+    android:minHeight="40dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="1"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/taskmanager_widget"
+    android:previewLayout="@layout/taskmanager_widget"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen" />

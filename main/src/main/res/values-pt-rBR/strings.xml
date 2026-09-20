@@ -273,4 +273,14 @@
     <string name="net_no_data">Nenhum tráfego registrado neste período.</string>
     <string name="net_diag_prefix">Diagnóstico: %1$s</string>
     <string name="net_showing_top">Mostrando os %1$d principais apps.</string>
+    <!-- Widget na tela inicial (modos efêmero e ao vivo) e bloco QS -->
+    <string name="widget_cpu">CPU</string>
+    <string name="widget_ram">RAM</string>
+    <string name="widget_battery">Bateria</string>
+    <string name="widget_live_badge">AO VIVO</string>
+    <string name="widget_no_data">\u2013</string>
+    <string name="qs_tile_live">Monitor ao vivo</string>
+    <string name="live_notif_channel">Monitor ao vivo</string>
+    <string name="live_notif_title">Monitor ao vivo do Task Manager</string>
+    <string name="live_notif_text">CPU %1$d%% \u00b7 RAM %2$d%% \u00b7 Bateria %3$d%%</string>
 </resources>
