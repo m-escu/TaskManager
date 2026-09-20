@@ -65,6 +65,20 @@ class TaskManager : Application() {
         instance = this
         com.rk.commons.application = this
 
+        // fork10 -> fork11 migration: the widget refresh pref moved from
+        // whole minutes to free-form seconds. Runs before anything can read
+        // the new key (Application.onCreate precedes every component).
+        runCatching {
+            val prefs = getSharedPreferences("Settings", Context.MODE_PRIVATE)
+            if (prefs.contains("widget_refresh_minutes") &&
+                prefs.contains("widget_refresh_seconds").not()
+            ) {
+                com.rk.commons.settings.Settings.widgetRefreshSeconds =
+                    prefs.getInt("widget_refresh_minutes", 30) * 60
+            }
+            prefs.edit().remove("widget_refresh_minutes").apply()
+        }
+
         // Keep the user-configurable widget refresh alarm armed. Self-heals
         // after reboots/process restarts; a no-op while no widget is placed
         // (the scheduler checks placed instances first).

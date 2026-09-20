@@ -281,13 +281,31 @@
     <string name="qs_tile_live">实时监控</string>
     <string name="live_notif_channel">实时监控</string>
     <string name="live_notif_title">Task Manager 实时监控</string>
-    <string name="live_notif_text">CPU %1$d%% \u00b7 内存 %2$d%% \u00b7 电池 %3$d%%</string>
+<string name="live_notif_text">CPU %1$d%% \u00b7 \u5185\u5b58 %2$d%% \u00b7 %3$s</string>
     <!-- Void 主题 + 小组件刷新设置（fork10） -->
     <string name="void_theme">Void</string>
     <string name="widget">小组件</string>
     <string name="widget_desc">主屏幕小组件</string>
     <string name="widget_refresh_title">刷新间隔</string>
-    <string name="widget_refresh_desc">小组件自行刷新的频率。实时模式（快捷设置磁贴）始终每秒更新。</string>
+<string name="widget_refresh_desc">\u5c0f\u7ec4\u4ef6\u81ea\u884c\u5237\u65b0\u7684\u9891\u7387\u3002\u5f53\u524d\uff1a%1$s\u3002\u5b9e\u65f6\u6a21\u5f0f\uff08\u5feb\u6377\u8bbe\u7f6e\u78c1\u8d34\uff09\u59cb\u7ec8\u6bcf\u79d2\u66f4\u65b0\u3002</string>
     <string name="min_unit">%1$d 分钟</string>
     <string name="widget_current">电流</string>
+
+    <!-- fork11: free-form refresh intervals, exact-alarm grant, accent colors -->
+    <string name="sec_unit">%1$d \u79d2</string>
+    <string name="unit_seconds">\u79d2</string>
+    <string name="unit_minutes">\u5206\u949f</string>
+    <string name="interval_value">\u6570\u503c</string>
+    <string name="interval_range_hint">\u8bf7\u8f93\u5165 %1$d \u79d2\u5230 %2$d \u5c0f\u65f6\u4e4b\u95f4\u7684\u6570\u503c</string>
+    <string name="notif_refresh_title">\u901a\u77e5\u5237\u65b0</string>
+    <string name="notif_refresh_desc">\u5b9e\u65f6\u901a\u77e5\u6587\u672c\u7684\u66f4\u65b0\u9891\u7387\u3002\u5f53\u524d\uff1a%1$s\u3002</string>
+    <string name="notif_range_hint">\u8bf7\u8f93\u5165 1 \u5230 3600 \u4e4b\u95f4\u7684\u79d2\u6570</string>
+    <string name="exact_alarm_title">\u5141\u8bb8\u7cbe\u786e\u95f9\u949f</string>
+    <string name="exact_alarm_desc">\u5c0f\u7ec4\u4ef6\u7cbe\u786e\u6309\u6240\u9009\u95f4\u9694\u5237\u65b0\u9700\u8981\u6b64\u6743\u9650\u3002\u70b9\u6309\u6253\u5f00 Android \u8bbe\u7f6e\u3002</string>
+    <string name="accent_color">\u5f3a\u8c03\u8272</string>
+    <string name="accent_desc">\u66ff\u6362\u4e3b\u9898\u81ea\u5e26\u7684\u5f3a\u8c03\u8272\u3002\u9009\u62e9\u989c\u8272\u540e\u5c06\u5173\u95ed\u52a8\u6001\u53d6\u8272\u3002</string>
+    <string name="accent_custom">\u81ea\u5b9a\u4e49\u989c\u8272</string>
+    <string name="accent_hex_label">#RRGGBB</string>
+    <string name="accent_hex_invalid">\u989c\u8272\u65e0\u6548\uff0c\u8bf7\u4f7f\u7528 #RRGGBB \u683c\u5f0f\u3002</string>
+
 </resources>

@@ -19,10 +19,15 @@
     <!-- Home-screen widget: POST_NOTIFICATIONS keeps the live-mode FGS
          notification visible on API 33+; the FGS permissions back
          WidgetLiveService (foregroundServiceType=specialUse, declared
-         below). The ephemeral widget mode needs none of these. -->
+         below). The ephemeral widget mode needs none of these.
+         SCHEDULE_EXACT_ALARM backs the user-configurable ephemeral refresh
+         (Settings -> Widget): exact alarms are denied by default on
+         Android 14+, and without the grant the interval is followed only
+         approximately (graceful inexact fallback in the scheduler). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
 
     <application
@@ -70,8 +75,9 @@
         </receiver>
 
         <!-- User-configurable ephemeral refresh (Settings -> Widget); a
-             non-wakeup inexact repeating alarm, armed only while at least
-             one widget is placed. -->
+             self-rescheduling one-shot alarm chain (exact when
+             SCHEDULE_EXACT_ALARM is granted, inexact otherwise), armed only
+             while at least one widget is placed. -->
         <receiver
             android:name=".widget.WidgetRefreshReceiver"
             android:exported="false" />

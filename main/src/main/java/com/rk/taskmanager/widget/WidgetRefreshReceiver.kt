@@ -7,6 +7,7 @@ import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import com.rk.commons.settings.Settings
@@ -15,21 +16,42 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * User-tunable ephemeral refresh (Settings -> Widget). The system's own
- * 30-minute APPWIDGET_UPDATE remains as the backstop; this inexact,
- * non-wakeup alarm makes faster intervals possible without any long-lived
- * process. No alarm is armed while zero widgets are placed, so it can never
- * wake the process for nothing.
+ * User-tunable ephemeral refresh (Settings -> Widget), free-form input from
+ * 5 seconds to 24 hours.
+ *
+ * Why exact one-shots instead of setInexactRepeating: batched inexact
+ * repeating alarms are advisory — the system (and OEM power handlers) fold
+ * them into shared alarm windows and defer them arbitrarily, so a chosen
+ * interval simply never materialized in the field. Instead we self-reschedule
+ * a single exact alarm on every fire: the timing is honored, the chain
+ * survives process death (Application.onCreate re-arms) and reboots (the
+ * 30-minute system cadence + process start heal it), and nothing persists
+ * between fires. When exact alarms are not permitted (SCHEDULE_EXACT_ALARM
+ * is denied by default on Android 14+), we fall back to inexact one-shots,
+ * which are still far better behaved than a repeating inexact alarm.
+ *
+ * No alarm is armed while zero widgets are placed, so it can never wake the
+ * process for nothing. The system's own 30-minute APPWIDGET_UPDATE remains
+ * as the backstop either way.
  */
 object WidgetRefreshScheduler {
 
-    const val MIN_MINUTES = 15
-    const val MAX_MINUTES = 720
+    const val MIN_SECONDS = 5
+    const val MAX_SECONDS = 86_400
+    const val ACTION_REFRESH = "com.rk.taskmanager.widget.action.REFRESH"
+
+    /** Clamped interval actually used by the scheduler, in seconds. */
+    fun intervalSeconds(): Int = Settings.widgetRefreshSeconds.coerceIn(MIN_SECONDS, MAX_SECONDS)
+
+    fun canScheduleExact(context: Context): Boolean {
+        val am = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return false
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) am.canScheduleExactAlarms() else true
+    }
 
     private fun pendingIntent(context: Context): PendingIntent = PendingIntent.getBroadcast(
         context,
         0,
-        Intent(context, WidgetRefreshReceiver::class.java),
+        Intent(context, WidgetRefreshReceiver::class.java).setAction(ACTION_REFRESH),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
 
@@ -41,21 +63,20 @@ object WidgetRefreshScheduler {
         return ids != null && ids.isNotEmpty()
     }
 
-    /** (Re-)arms the repeating alarm at the configured interval. */
+    /** (Re-)arms the one-shot alarm at the configured interval. */
     fun schedule(context: Context) {
         if (!hasWidgets(context)) return
 
         val am = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
         val pi = pendingIntent(context)
         pi.cancel()
-        val intervalMs = Settings.widgetRefreshMinutes
-            .coerceIn(MIN_MINUTES, MAX_MINUTES) * 60_000L
-        am.setInexactRepeating(
-            AlarmManager.ELAPSED_REALTIME,
-            SystemClock.elapsedRealtime() + intervalMs,
-            intervalMs,
-            pi,
-        )
+        val intervalMs = intervalSeconds() * 1000L
+        val triggerAt = SystemClock.elapsedRealtime() + intervalMs
+        if (canScheduleExact(context)) {
+            am.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME, triggerAt, pi)
+        } else {
+            am.set(AlarmManager.ELAPSED_REALTIME, triggerAt, pi)
+        }
     }
 
     /** Drops the alarm (last widget removed). */
@@ -66,9 +87,10 @@ object WidgetRefreshScheduler {
 }
 
 /**
- * Fires the user-configured ephemeral refresh. Alarms do not survive
- * reboots, so every fire re-arms the next one; Application.onCreate and
- * the provider's onEnabled arm it again from the other side.
+ * Fires the user-configured ephemeral refresh, then arms the next shot.
+ * Alarms do not survive reboots, so every fire re-arms; Application.onCreate,
+ * the provider's onEnabled/onUpdate and the settings screen arm it from the
+ * other sides.
  */
 class WidgetRefreshReceiver : BroadcastReceiver() {
 

@@ -25,10 +25,19 @@ object Settings {
     var useImperialUnits by BooleanPref(key = "use_imperial_units", default = false)
     var batteryCurrentUnit by IntPref(key = "battery_current_unit", default = BatteryCurrentUnit.UNKNOWN)
 
-    /** Home-screen widget ephemeral refresh interval in minutes. 15 is the
-     *  system floor for inexact repeating alarms; the stock APPWIDGET_UPDATE
+    /** Home-screen widget ephemeral refresh interval in SECONDS (free-form
+     *  user input; clamped by WidgetRefreshScheduler to 5 s .. 24 h). Driven
+     *  by a self-rescheduling exact alarm chain; the stock APPWIDGET_UPDATE
      *  cadence (30 min) always remains as a backstop. */
-    var widgetRefreshMinutes by IntPref(key = "widget_refresh_minutes", default = 30)
+    var widgetRefreshSeconds by IntPref(key = "widget_refresh_seconds", default = 1800)
+
+    /** How often (seconds) the live-mode notification text refreshes.
+     *  The service tick is 1 Hz, so any value >= 1 works. Default 3 s. */
+    var notifRefreshSeconds by IntPref(key = "notif_refresh_seconds", default = 3)
+
+    /** Accent override applied on top of the selected theme. 0 = use the
+     *  theme's own accent (also when dynamic color / monet is active). */
+    var accentColor by IntPref(key = "accent_color", default = 0)
 
     /** How the Kill button stops processes: 0 = ask, 1 = terminate (SIGTERM->SIGKILL), 2 = force (SIGKILL). */
     var defaultKillAction by IntPref(key = "default_kill_action", default = 0)

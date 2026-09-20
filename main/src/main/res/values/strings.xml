@@ -302,13 +302,31 @@
     <string name="qs_tile_live">Live monitor</string>
     <string name="live_notif_channel">Live monitor</string>
     <string name="live_notif_title">Task Manager live monitor</string>
-    <string name="live_notif_text">CPU %1$d%% \u00b7 RAM %2$d%% \u00b7 Battery %3$d%%</string>
+<string name="live_notif_text">CPU %1$d%% \u00b7 RAM %2$d%% \u00b7 %3$s</string>
     <!-- Void theme + widget refresh settings (fork10) -->
     <string name="void_theme">Void</string>
     <string name="widget">Widget</string>
     <string name="widget_desc">Home-screen widget</string>
     <string name="widget_refresh_title">Refresh interval</string>
-    <string name="widget_refresh_desc">How often the widget refreshes on its own. Live mode (QS tile) always updates every second.</string>
+<string name="widget_refresh_desc">How often the widget refreshes on its own. Currently: %1$s. Live mode (QS tile) always updates every second.</string>
     <string name="min_unit">%1$d min</string>
     <string name="widget_current">Current</string>
+
+    <!-- fork11: free-form refresh intervals, exact-alarm grant, accent colors -->
+    <string name="sec_unit">%1$d s</string>
+    <string name="unit_seconds">Seconds</string>
+    <string name="unit_minutes">Minutes</string>
+    <string name="interval_value">Interval</string>
+    <string name="interval_range_hint">Enter a value between %1$d seconds and %2$d hours</string>
+    <string name="notif_refresh_title">Notification refresh</string>
+    <string name="notif_refresh_desc">How often the live notification text updates. Currently: %1$s.</string>
+    <string name="notif_range_hint">Enter a value between 1 and 3600 seconds</string>
+    <string name="exact_alarm_title">Allow exact alarms</string>
+    <string name="exact_alarm_desc">Needed so the widget follows your interval precisely. Tap to open Android settings.</string>
+    <string name="accent_color">Accent color</string>
+    <string name="accent_desc">Replaces the theme\'s own accent. Picking a color turns off dynamic color.</string>
+    <string name="accent_custom">Custom color</string>
+    <string name="accent_hex_label">#RRGGBB</string>
+    <string name="accent_hex_invalid">Invalid color. Use #RRGGBB.</string>
+
 </resources>

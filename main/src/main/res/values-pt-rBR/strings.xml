@@ -282,13 +282,31 @@
     <string name="qs_tile_live">Monitor ao vivo</string>
     <string name="live_notif_channel">Monitor ao vivo</string>
     <string name="live_notif_title">Monitor ao vivo do Task Manager</string>
-    <string name="live_notif_text">CPU %1$d%% \u00b7 RAM %2$d%% \u00b7 Bateria %3$d%%</string>
+<string name="live_notif_text">CPU %1$d%% \u00b7 RAM %2$d%% \u00b7 %3$s</string>
     <!-- Tema Void + configurações de atualização do widget (fork10) -->
     <string name="void_theme">Void</string>
     <string name="widget">Widget</string>
     <string name="widget_desc">Widget na tela inicial</string>
     <string name="widget_refresh_title">Intervalo de atualização</string>
-    <string name="widget_refresh_desc">Com que frequência o widget é atualizado sozinho. O modo ao vivo (bloco QS) sempre atualiza a cada segundo.</string>
+<string name="widget_refresh_desc">Com que frequ\u00eancia o widget \u00e9 atualizado sozinho. Atualmente: %1$s. O modo ao vivo (bloco QS) sempre atualiza a cada segundo.</string>
     <string name="min_unit">%1$d min</string>
     <string name="widget_current">Corrente</string>
+
+    <!-- fork11: free-form refresh intervals, exact-alarm grant, accent colors -->
+    <string name="sec_unit">%1$d s</string>
+    <string name="unit_seconds">Segundos</string>
+    <string name="unit_minutes">Minutos</string>
+    <string name="interval_value">Intervalo</string>
+    <string name="interval_range_hint">Introduza um valor entre %1$d segundos e %2$d horas</string>
+    <string name="notif_refresh_title">Atualiza\u00e7\u00e3o da notifica\u00e7\u00e3o</string>
+    <string name="notif_refresh_desc">Com que frequ\u00eancia o texto da notifica\u00e7\u00e3o ao vivo \u00e9 atualizado. Atualmente: %1$s.</string>
+    <string name="notif_range_hint">Introduza um valor entre 1 e 3600 segundos</string>
+    <string name="exact_alarm_title">Permitir alarmes exatos</string>
+    <string name="exact_alarm_desc">Necess\u00e1rio para que o widget siga o seu intervalo com precis\u00e3o. Toque para abrir as configura\u00e7\u00f5es do Android.</string>
+    <string name="accent_color">Cor de destaque</string>
+    <string name="accent_desc">Substitui o acento do tema. Escolher uma cor desativa a cor din\u00e2mica.</string>
+    <string name="accent_custom">Cor personalizada</string>
+    <string name="accent_hex_label">#RRGGBB</string>
+    <string name="accent_hex_invalid">Cor inv\u00e1lida. Use #RRGGBB.</string>
+
 </resources>

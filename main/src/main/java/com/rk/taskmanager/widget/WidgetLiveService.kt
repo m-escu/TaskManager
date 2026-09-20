@@ -50,7 +50,6 @@ class WidgetLiveService : Service() {
         private const val CHANNEL_ID = "live_monitor"
         private const val NOTIF_ID = 1001
         private const val INTERVAL_MS = 1_000L
-        private const val NOTIF_UPDATE_EVERY_TICKS = 3
         private const val TAG = "WidgetLiveService"
 
         /** Mirrored by the QS tile and the ephemeral widget renderer. */
@@ -141,12 +140,16 @@ class WidgetLiveService : Service() {
                     lastRamTotal = total
                     lastCurrentUA = currentUA
 
-                    if (tick % NOTIF_UPDATE_EVERY_TICKS == 0) {
+                    // Re-read every tick: a changed setting applies live,
+                    // without restarting the service. The first tick always
+                    // updates (0 % n == 0) so the text is never stale.
+                    val notifEvery = Settings.notifRefreshSeconds.coerceIn(1, 3600)
+                    if (tick % notifEvery == 0) {
                         updateNotification(
                             cpu = cpu,
                             ramUsed = used,
                             ramTotal = total,
-                            batt = WidgetStats.readBatteryPercent(this@WidgetLiveService),
+                            currentUA = currentUA,
                         )
                     }
                     tick++
@@ -182,7 +185,7 @@ class WidgetLiveService : Service() {
             )
         )
 
-        val notification = buildNotification(cpu = -1, ramUsed = 0L, ramTotal = 0L, batt = -1)
+        val notification = buildNotification(cpu = -1, ramUsed = 0L, ramTotal = 0L, currentUA = -1L)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             // specialUse is unknown to <34; passing it there would crash.
             startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
@@ -191,12 +194,12 @@ class WidgetLiveService : Service() {
         }
     }
 
-    private fun updateNotification(cpu: Int, ramUsed: Long, ramTotal: Long, batt: Int) {
+    private fun updateNotification(cpu: Int, ramUsed: Long, ramTotal: Long, currentUA: Long) {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(NOTIF_ID, buildNotification(cpu, ramUsed, ramTotal, batt))
+        nm.notify(NOTIF_ID, buildNotification(cpu, ramUsed, ramTotal, currentUA))
     }
 
-    private fun buildNotification(cpu: Int, ramUsed: Long, ramTotal: Long, batt: Int): Notification {
+    private fun buildNotification(cpu: Int, ramUsed: Long, ramTotal: Long, currentUA: Long): Notification {
         val open = PendingIntent.getActivity(
             this,
             0,
@@ -204,11 +207,18 @@ class WidgetLiveService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val ramPct = if (ramTotal > 0L) ((ramUsed * 100L) / ramTotal).toInt() else -1
+        // Same column the widget shows: compact drain like "850mA" / "1.23A",
+        // or the en-dash placeholder when the device exposes no current.
+        val drain = if (currentUA < 0) {
+            getString(strings.widget_no_data)
+        } else {
+            WidgetStats.formatCurrent(currentUA)
+        }
         val text = getString(
             strings.live_notif_text,
             cpu.coerceAtLeast(0),
             ramPct.coerceAtLeast(0),
-            batt.coerceAtLeast(0),
+            drain,
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_taskmanager_foreground)

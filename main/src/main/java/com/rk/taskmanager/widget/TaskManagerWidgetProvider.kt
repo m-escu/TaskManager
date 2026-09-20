@@ -45,6 +45,11 @@ class TaskManagerWidgetProvider : AppWidgetProvider() {
     ) {
         if (appWidgetIds.isEmpty()) return
 
+        // Self-heal point: the system cadence is the one update that always
+        // comes, so re-arm the user-configurable alarm chain here too (e.g.
+        // after reboot before the app process ever ran).
+        WidgetRefreshScheduler.schedule(context)
+
         // goAsync: the CPU sample needs ~350ms; receiver code must not block
         // the main thread for that long.
         val pendingResult = goAsync()

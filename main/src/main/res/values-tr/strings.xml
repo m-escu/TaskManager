@@ -146,13 +146,31 @@
     <string name="qs_tile_live">Canlı izleyici</string>
     <string name="live_notif_channel">Canlı izleyici</string>
     <string name="live_notif_title">Task Manager canlı izleyici</string>
-    <string name="live_notif_text">CPU %1$d%% \u00b7 RAM %2$d%% \u00b7 Pil %3$d%%</string>
+<string name="live_notif_text">CPU %1$d%% \u00b7 RAM %2$d%% \u00b7 %3$s</string>
     <!-- Void teması + widget yenileme ayarları (fork10) -->
     <string name="void_theme">Void</string>
     <string name="widget">Widget</string>
     <string name="widget_desc">Ana ekran widget\'ı</string>
     <string name="widget_refresh_title">Yenileme aralığı</string>
-    <string name="widget_refresh_desc">Widget\'ın kendiliğinden yenilenme sıklığı. Canlı mod (QS kutusu) her zaman her saniye günceller.</string>
+<string name="widget_refresh_desc">Widget\'\u0131n kendili\u011finden yenilenme s\u0131kl\u0131\u011f\u0131. \u015eu an: %1$s. Canl\u0131 mod (QS kutusu) her zaman her saniye g\u00fcnceller.</string>
     <string name="min_unit">%1$d dk</string>
     <string name="widget_current">Akım</string>
+
+    <!-- fork11: free-form refresh intervals, exact-alarm grant, accent colors -->
+    <string name="sec_unit">%1$d sn</string>
+    <string name="unit_seconds">Saniye</string>
+    <string name="unit_minutes">Dakika</string>
+    <string name="interval_value">Aral\u0131k</string>
+    <string name="interval_range_hint">%1$d saniye ile %2$d saat aras\u0131nda bir de\u011fer girin</string>
+    <string name="notif_refresh_title">Bildirim yenileme</string>
+    <string name="notif_refresh_desc">Canl\u0131 bildirim metninin g\u00fcncellenme s\u0131kl\u0131\u011f\u0131. \u015eu an: %1$s.</string>
+    <string name="notif_range_hint">1 ile 3600 saniye aras\u0131nda bir de\u011fer girin</string>
+    <string name="exact_alarm_title">Tam zamanl\u0131 alarmlara izin ver</string>
+    <string name="exact_alarm_desc">Widget\'\u0131n aral\u0131\u011f\u0131n\u0131z\u0131 tam olarak izlemesi i\u00e7in gerekli. Android ayarlar\u0131n\u0131 a\u00e7mak i\u00e7in dokunun.</string>
+    <string name="accent_color">Vurgu rengi</string>
+    <string name="accent_desc">Teman\u0131n kendi vurgusunun yerini al\u0131r. Bir renk se\u00e7mek dinamik rengi kapat\u0131r.</string>
+    <string name="accent_custom">\u00d6zel renk</string>
+    <string name="accent_hex_label">#RRGGBB</string>
+    <string name="accent_hex_invalid">Ge\u00e7ersiz renk. #RRGGBB kullan\u0131n.</string>
+
 </resources>

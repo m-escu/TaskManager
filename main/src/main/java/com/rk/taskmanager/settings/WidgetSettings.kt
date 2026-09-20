@@ -1,41 +1,275 @@
 package com.rk.taskmanager.settings
 
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings as AndroidSystemSettings
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
 import com.rk.commons.settings.Settings
 import com.rk.commons.strings
 import com.rk.components.compose.preferences.base.PreferenceGroup
 import com.rk.components.compose.preferences.base.PreferenceLayout
 import com.rk.components.compose.preferences.base.PreferenceTemplate
-import com.rk.taskmanager.TaskManager
 import com.rk.taskmanager.widget.WidgetRefreshScheduler
 
 /**
- * Widget settings: the ephemeral refresh interval. Live mode (QS tile) is
- * always 1 Hz and needs no configuration.
+ * Widget settings. The ephemeral refresh interval is free-form (5 s .. 24 h,
+ * entered in seconds or minutes) and drives an exact, self-rescheduling
+ * alarm chain; the live mode (QS tile) stays at a fixed 1 Hz.
+ * The live notification's text cadence is configurable here too.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WidgetSettings(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+
+    var showIntervalDialog by remember { mutableStateOf(false) }
+    var showNotifDialog by remember { mutableStateOf(false) }
+
+    val intervalSeconds = remember { mutableIntStateOf(WidgetRefreshScheduler.intervalSeconds()) }
+    val notifSeconds = remember { mutableIntStateOf(Settings.notifRefreshSeconds) }
+
     PreferenceLayout(label = stringResource(strings.widget), modifier = modifier) {
         PreferenceGroup(heading = stringResource(strings.widget_refresh_title)) {
-            PreferenceTemplate(
-                title = { Text(stringResource(strings.widget_refresh_title)) },
-                description = { Text(stringResource(strings.widget_refresh_desc)) },
+            ActionRow(
+                title = stringResource(strings.widget_refresh_title),
+                description = stringResource(
+                    strings.widget_refresh_desc,
+                    formatInterval(intervalSeconds.intValue),
+                ),
+                onClick = { showIntervalDialog = true },
             )
 
-            listOf(15, 30, 60, 180).forEach { minutes ->
-                SelectableCard(
-                    selected = Settings.widgetRefreshMinutes == minutes,
-                    label = stringResource(strings.min_unit, minutes),
-                    description = null,
+            // SCHEDULE_EXACT_ALARM is denied by default on Android 14+;
+            // without it the interval is followed only approximately, so
+            // offer the one-tap jump to the special-access page.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                !WidgetRefreshScheduler.canScheduleExact(context)
+            ) {
+                ActionRow(
+                    title = stringResource(strings.exact_alarm_title),
+                    description = stringResource(strings.exact_alarm_desc),
                     onClick = {
-                        Settings.widgetRefreshMinutes = minutes
-                        WidgetRefreshScheduler.schedule(TaskManager.requireContext())
-                    }
+                        runCatching {
+                            context.startActivity(
+                                Intent(AndroidSystemSettings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                                    .setData(Uri.fromParts("package", context.packageName, null))
+                            )
+                        }
+                    },
                 )
             }
         }
+
+        PreferenceGroup(heading = stringResource(strings.live_notif_channel)) {
+            ActionRow(
+                title = stringResource(strings.notif_refresh_title),
+                description = stringResource(
+                    strings.notif_refresh_desc,
+                    formatInterval(notifSeconds.intValue),
+                ),
+                onClick = { showNotifDialog = true },
+            )
+        }
     }
+
+    if (showIntervalDialog) {
+        NumberInputDialog(
+            title = stringResource(strings.widget_refresh_title),
+            inputLabel = stringResource(strings.interval_value),
+            initialSeconds = intervalSeconds.intValue,
+            minSeconds = WidgetRefreshScheduler.MIN_SECONDS,
+            maxSeconds = WidgetRefreshScheduler.MAX_SECONDS,
+            showUnitToggle = true,
+            rangeHint = stringResource(
+                strings.interval_range_hint,
+                WidgetRefreshScheduler.MIN_SECONDS,
+                WidgetRefreshScheduler.MAX_SECONDS / 3600,
+            ),
+            onConfirm = { seconds ->
+                intervalSeconds.intValue = seconds
+                Settings.widgetRefreshSeconds = seconds
+                WidgetRefreshScheduler.schedule(context.applicationContext)
+            },
+            onDismiss = { showIntervalDialog = false },
+        )
+    }
+
+    if (showNotifDialog) {
+        NumberInputDialog(
+            title = stringResource(strings.notif_refresh_title),
+            inputLabel = stringResource(strings.unit_seconds),
+            initialSeconds = notifSeconds.intValue,
+            minSeconds = 1,
+            maxSeconds = 3600,
+            showUnitToggle = false,
+            rangeHint = stringResource(strings.notif_range_hint),
+            onConfirm = { seconds ->
+                notifSeconds.intValue = seconds
+                Settings.notifRefreshSeconds = seconds
+            },
+            onDismiss = { showNotifDialog = false },
+        )
+    }
+}
+
+/** "30 min" for whole minutes, "45 s" otherwise. */
+private fun formatInterval(seconds: Int): String = if (seconds >= 60 && seconds % 60 == 0) {
+    stringResQuiet(strings.min_unit, seconds / 60)
+} else {
+    stringResQuiet(strings.sec_unit, seconds)
+}
+
+// formatInterval is called from composable context only, so a plain
+// stringResource would work; keep it simple with LocalContext-free helper.
+private fun stringResQuiet(res: Int, value: Int): String =
+    com.rk.commons.application!!.getString(res, value)
+
+/**
+ * A clickable preference row built on PreferenceTemplate (the template has
+ * no onClick of its own — same approach as SelectableCard, minus the radio).
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ActionRow(title: String, description: String, onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    PreferenceTemplate(
+        modifier = Modifier.combinedClickable(
+            interactionSource = interactionSource,
+            indication = ripple(),
+            onClick = onClick,
+        ),
+        title = { Text(title) },
+        description = { Text(description) },
+    )
+}
+
+/**
+ * Free-form numeric interval entry. Digits only; the value is interpreted in
+ * the unit picked via the seconds/minutes chips (widget interval) or always
+ * in seconds (notification). Valid ranges are enforced with an inline error.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NumberInputDialog(
+    title: String,
+    inputLabel: String,
+    initialSeconds: Int,
+    minSeconds: Int,
+    maxSeconds: Int,
+    showUnitToggle: Boolean,
+    rangeHint: String,
+    onConfirm: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var text by remember {
+        mutableStateOf(
+            if (showUnitToggle && initialSeconds >= 60 && initialSeconds % 60 == 0) {
+                (initialSeconds / 60).toString()
+            } else {
+                initialSeconds.toString()
+            }
+        )
+    }
+    var unitIsMinutes by remember {
+        // Match the pre-filled text: whole-minute values are shown in minutes.
+        mutableStateOf(showUnitToggle && initialSeconds >= 60 && initialSeconds % 60 == 0)
+    }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    fun parsedSeconds(): Int? {
+        val value = text.trim().toIntOrNull() ?: return null
+        val seconds = if (unitIsMinutes) {
+            val shifted = value.toLong() * 60L
+            if (shifted > Int.MAX_VALUE) return null else shifted.toInt()
+        } else {
+            value
+        }
+        return seconds.takeIf { it in minSeconds..maxSeconds }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { input ->
+                        text = input.filter { it.isDigit() }.take(6)
+                        error = null
+                    },
+                    label = { Text(inputLabel) },
+                    isError = error != null,
+                    supportingText = { error?.let { Text(it) } },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions.Default.copy(
+                        keyboardType = KeyboardType.Number,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (showUnitToggle) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(top = 8.dp),
+                    ) {
+                        FilterChip(
+                            selected = !unitIsMinutes,
+                            onClick = { unitIsMinutes = false; error = null },
+                            label = { Text(stringResource(strings.unit_seconds)) },
+                        )
+                        FilterChip(
+                            selected = unitIsMinutes,
+                            onClick = { unitIsMinutes = true; error = null },
+                            label = { Text(stringResource(strings.unit_minutes)) },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val seconds = parsedSeconds()
+                    if (seconds == null) {
+                        error = rangeHint
+                    } else {
+                        onConfirm(seconds)
+                        onDismiss()
+                    }
+                }
+            ) {
+                Text(stringResource(strings.apply))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(strings.cancel)) }
+        },
+    )
 }
