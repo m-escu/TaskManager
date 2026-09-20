@@ -80,6 +80,13 @@ val netGraphHandler = GraphDataHandler(seriesCount = 2)
 private val NET_PERIOD_DAYS = intArrayOf(1, 7, 30)
 private const val MAX_APP_ROWS = 50
 private const val SU_TIMEOUT_SECONDS = 15L
+
+/** Sampling window of the live per-app rate mode. */
+private const val LIVE_RATE_SAMPLE_MS = 3_000L
+
+/** The cumulative per-uid anchor is rebased after this long to bound query cost. */
+private const val LIVE_RATE_REBASE_MS = 10L * 60 * 1000
+
 private const val TAG = "NetScreen"
 
 /** One-line summary of the last per-app query, surfaced when the list is empty. */
@@ -324,6 +331,10 @@ fun NetScreen(modifier: Modifier = Modifier) {
     var refreshTick by remember { mutableIntStateOf(0) }
     var apps by remember { mutableStateOf<List<AppNetUsage>>(emptyList()) }
 
+    // Per-app display mode: period totals (default) or live transfer rates.
+    var liveMode by rememberSaveable { mutableStateOf(false) }
+    var rates by remember { mutableStateOf<List<AppNetUsage>>(emptyList()) }
+
     // The appop can only be granted while this screen is paused (either in
     // Settings -> Usage access, or via the su/Shizuku prompt which suspends
     // the activity), so re-check on every resume and refresh the totals.
@@ -364,22 +375,84 @@ fun NetScreen(modifier: Modifier = Modifier) {
                     (downloadBps / 1024.0).toInt(),
                     (uploadBps / 1024.0).toInt(),
                 ) {
-                    selectedscreen.intValue == 3 && navControllerRef.get()?.currentDestination?.route == SettingsRoutes.Home.route
+                    // Same gate the CPU/RAM/GPU charts use. The old
+                    // `selectedscreen == 3` compared against the BOTTOM nav
+                    // (0 = resources, 1 = processes) — it could never be 3,
+                    // so the chart never received a single transaction and
+                    // stayed a flat zero line. NetScreen is only composed
+                    // while its tab (currentResource == 3) is visible, so the
+                    // resource-tab half of the gate is already implied.
+                    selectedscreen.intValue == 0 &&
+                        navControllerRef.get()?.currentDestination?.route == SettingsRoutes.Home.route
                 }
             }
             delay(1000)
         }
     }
 
-    // Per-app totals for the selected period (also re-run after resume / grant).
-    LaunchedEffect(periodDays, usageGranted, refreshTick) {
-        if (!usageGranted) {
+    // Per-app totals for the selected period (also re-run after resume / grant,
+    // and after leaving live mode so the totals are fresh).
+    LaunchedEffect(periodDays, usageGranted, refreshTick, liveMode) {
+        if (!usageGranted || liveMode) {
             apps = emptyList()
+            if (!usageGranted) liveMode = false
             return@LaunchedEffect
         }
         val since = System.currentTimeMillis() - periodDays * 24L * 3600 * 1000
         val perUid = queryPerAppUsage(context, since)
         apps = if (perUid == null) emptyList() else toAppUsages(context, perUid)
+    }
+
+    // Live per-app rates: NetworkStatsManager only exposes cumulative
+    // counters, so the rate is the DIFF of two consecutive snapshots taken
+    // from the same anchor. A fixed anchor keeps consecutive snapshots
+    // comparable even when the framework hands out coarse buckets — any
+    // bytes that land between snapshots always show up in the next diff.
+    LaunchedEffect(usageGranted, liveMode) {
+        if (!usageGranted || !liveMode) {
+            rates = emptyList()
+            return@LaunchedEffect
+        }
+        var anchor = System.currentTimeMillis() - LIVE_RATE_SAMPLE_MS
+        var prev = queryPerAppUsage(context, anchor)
+        if (prev == null) {
+            liveMode = false
+            return@LaunchedEffect
+        }
+        var prevStamp = System.currentTimeMillis()
+        while (isActive) {
+            delay(LIVE_RATE_SAMPLE_MS)
+            val cur = queryPerAppUsage(context, anchor)
+            if (cur == null) {
+                liveMode = false
+                break
+            }
+            val now = System.currentTimeMillis()
+            val elapsedSec = ((now - prevStamp) / 1000.0).coerceAtLeast(0.5)
+            prevStamp = now
+
+            // Per-uid delta since the previous snapshot, converted to bytes/s.
+            val delta = HashMap<Int, LongArray>(cur.size)
+            for ((uid, curBytes) in cur) {
+                val prevBytes = prev[uid]
+                val rx = (curBytes[0] - (prevBytes?.get(0) ?: 0L)).coerceAtLeast(0L)
+                val tx = (curBytes[1] - (prevBytes?.get(1) ?: 0L)).coerceAtLeast(0L)
+                if (rx > 0L || tx > 0L) {
+                    delta[uid] = longArrayOf(
+                        (rx / elapsedSec).toLong(),
+                        (tx / elapsedSec).toLong(),
+                    )
+                }
+            }
+            rates = toAppUsages(context, delta)
+
+            // Rebase the anchor periodically so each query never walks the
+            // whole history; the next snapshot becomes the new baseline.
+            prev = cur
+            if (now - anchor > LIVE_RATE_REBASE_MS) {
+                anchor = now
+            }
+        }
     }
 
     Column(modifier.verticalScroll(rememberScrollState())) {
@@ -495,10 +568,18 @@ fun NetScreen(modifier: Modifier = Modifier) {
                                 .padding(vertical = 4.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            FilterChip(
+                                selected = liveMode,
+                                onClick = { liveMode = true },
+                                label = { Text(stringResource(strings.net_live_chip)) }
+                            )
                             NET_PERIOD_DAYS.forEach { days ->
                                 FilterChip(
-                                    selected = periodDays == days,
-                                    onClick = { periodDays = days },
+                                    selected = !liveMode && periodDays == days,
+                                    onClick = {
+                                        liveMode = false
+                                        periodDays = days
+                                    },
                                     label = {
                                         Text(
                                             when (days) {
@@ -512,7 +593,29 @@ fun NetScreen(modifier: Modifier = Modifier) {
                             }
                         }
 
-                        if (apps.isEmpty()) {
+                        Text(
+                            text = if (liveMode) {
+                                stringResource(strings.net_live_hint)
+                            } else {
+                                stringResource(strings.net_totals_hint)
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+
+                        if (liveMode) {
+                            if (rates.isEmpty()) {
+                                Text(
+                                    text = stringResource(strings.net_no_active),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                rates.take(MAX_APP_ROWS).forEach { usage ->
+                                    AppNetRow(usage, liveRate = true)
+                                }
+                            }
+                        } else if (apps.isEmpty()) {
                             Text(
                                 text = stringResource(strings.net_no_data),
                                 style = MaterialTheme.typography.bodySmall,
@@ -547,7 +650,7 @@ fun NetScreen(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun AppNetRow(usage: AppNetUsage) {
+fun AppNetRow(usage: AppNetUsage, liveRate: Boolean = false) {
     val iconBitmap: ImageBitmap? = remember(usage.icon) {
         usage.icon?.let { drawableTobitMap(it)?.asImageBitmap() }
     }
@@ -581,10 +684,20 @@ fun AppNetRow(usage: AppNetUsage) {
                 maxLines = 1
             )
             Text(
-                text = stringResource(
-                    strings.net_app_traffic,
-                    FormatUtils.formatBytes(usage.rxBytes), FormatUtils.formatBytes(usage.txBytes)
-                ),
+                text = if (liveRate) {
+                    // rx/tx already hold bytes-per-second in live mode.
+                    stringResource(
+                        strings.net_app_rate,
+                        FormatUtils.formatBytes(usage.rxBytes),
+                        FormatUtils.formatBytes(usage.txBytes),
+                    )
+                } else {
+                    stringResource(
+                        strings.net_app_traffic,
+                        FormatUtils.formatBytes(usage.rxBytes),
+                        FormatUtils.formatBytes(usage.txBytes),
+                    )
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

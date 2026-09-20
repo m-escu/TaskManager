@@ -30,15 +30,16 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * Live monitor service. Pushes a fresh sample to every widget once per
- * second and mirrors CPU/RAM/current-drain/temperature into the foreground
- * notification.
+ * Live monitor service. During a QS-tile LIVE session it pushes a fresh
+ * sample to every widget once per second; in both activation modes it
+ * mirrors CPU/RAM/current-drain/temperature into the foreground
+ * notification on the notification's own cadence.
  *
  * Two independent activation sources keep it alive, tracked separately:
  *  - the QS tile ([LiveTileService]) starts a LIVE session for 1 Hz widgets,
- *  - the "permanent notification" setting (Settings -> Widget) keeps the
- *    notification running on its own, independent of widgets and tile; it
- *    is restored after reboot by [LiveBootReceiver].
+ *  - the "permanent notification" setting (Settings -> Widget and
+ *    notification) keeps the notification running on its own, independent
+ *    of widgets and tile; it is restored after reboot by [LiveBootReceiver].
  *
  * The service stops when BOTH sources are gone; the no-widgets auto-stop
  * only applies to tile sessions, never to the permanent notification.
@@ -106,6 +107,10 @@ class WidgetLiveService : Service() {
         when (intent?.action) {
             ACTION_STOP_QS -> {
                 liveSession = false
+                // Clear the LIVE badge right away: the widget drops back to
+                // the ephemeral alarm cadence (or freezes at the last frame
+                // when the alarm chain is slow) instead of staying live.
+                pushFinalFrame()
                 if (!Settings.permanentNotification) {
                     stopSelf()
                     return START_NOT_STICKY
@@ -148,17 +153,7 @@ class WidgetLiveService : Service() {
     override fun onDestroy() {
         isRunning = false
         liveSession = false
-        runCatching {
-            WidgetRenderer.push(
-                context = this,
-                cpuPercent = lastCpu,
-                ramUsed = lastRamUsed,
-                ramTotal = lastRamTotal,
-                currentUA = lastCurrentUA,
-                tempTenthsC = lastTempTenthsC,
-                live = false,
-            )
-        }
+        pushFinalFrame()
         scope.cancel()
         super.onDestroy()
     }
@@ -189,24 +184,34 @@ class WidgetLiveService : Service() {
                     val (used, total) = WidgetStats.readRam(this@WidgetLiveService)
                     val battery = WidgetStats.readBattery(this@WidgetLiveService)
 
-                    WidgetRenderer.push(
-                        context = this@WidgetLiveService,
-                        cpuPercent = cpu,
-                        ramUsed = used,
-                        ramTotal = total,
-                        currentUA = battery.currentUA,
-                        tempTenthsC = battery.tempTenthsC,
-                        live = true,
-                    )
+                    // Widget pushes are exclusive to a QS-tile live session
+                    // (1 Hz). The permanent notification alone must NOT drive
+                    // the widget — that cadence belongs to the user-configured
+                    // ephemeral alarm chain, and before this gate the widget
+                    // was stuck at 1 Hz whenever the notification ran, making
+                    // the QS tile look like a no-op.
+                    if (liveSession) {
+                        WidgetRenderer.push(
+                            context = this@WidgetLiveService,
+                            cpuPercent = cpu,
+                            ramUsed = used,
+                            ramTotal = total,
+                            currentUA = battery.currentUA,
+                            tempTenthsC = battery.tempTenthsC,
+                            live = true,
+                        )
+                    }
                     lastCpu = cpu
                     lastRamUsed = used
                     lastRamTotal = total
                     lastCurrentUA = battery.currentUA
                     lastTempTenthsC = battery.tempTenthsC
 
-                    // Re-read every tick: a changed setting applies live,
-                    // without restarting the service. The first tick always
-                    // updates (0 % n == 0) so the text is never stale.
+                    // The notification text updates on its own cadence in
+                    // BOTH modes (live session and permanent notification),
+                    // re-read every tick so changes apply without a restart.
+                    // The first tick always updates (0 % n == 0) so the text
+                    // is never stale.
                     val notifEvery = Settings.notifRefreshSeconds.coerceIn(1, 3600)
                     if (tick % notifEvery == 0) {
                         updateNotification(
@@ -231,6 +236,21 @@ class WidgetLiveService : Service() {
                 }
                 delay(INTERVAL_MS)
             }
+        }
+    }
+
+    /** One last widget frame with live=false (session ended, badge cleared). */
+    private fun pushFinalFrame() {
+        runCatching {
+            WidgetRenderer.push(
+                context = this,
+                cpuPercent = lastCpu,
+                ramUsed = lastRamUsed,
+                ramTotal = lastRamTotal,
+                currentUA = lastCurrentUA,
+                tempTenthsC = lastTempTenthsC,
+                live = false,
+            )
         }
     }
 

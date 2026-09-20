@@ -144,6 +144,8 @@
     <!-- Processes Screen -->
     <string name="sort_by_ram">Sort by RAM</string>
     <string name="sort_by_cpu">Sort by CPU</string>
+    <string name="sort_by_cpu_time">CPU time</string>
+    <string name="sort_by_cpu_time_desc">Total CPU time the process has used since it started</string>
     <string name="sort_by_name">Sort by Name (A-z)</string>
     <string name="refresh">Refresh</string>
     <string name="terminate">Terminate?</string>
@@ -286,6 +288,11 @@
     <string name="net_upload">Upload</string>
     <string name="net_per_app">Per-app traffic</string>
     <string name="net_app_traffic">Down %1$s / Up %2$s</string>
+    <string name="net_app_rate">Down %1$s/s / Up %2$s/s</string>
+    <string name="net_live_chip">Live</string>
+    <string name="net_no_active">No active transfers right now.</string>
+    <string name="net_totals_hint">Total traffic per app for the selected period.</string>
+    <string name="net_live_hint">Current transfer rate per app, refreshed every few seconds.</string>
     <string name="net_usage_access_desc">Per-app traffic totals come from the system network accounting and need Usage access. On rooted devices it can be granted directly.</string>
     <string name="net_grant_via_root">Grant via root</string>
     <string name="net_open_settings">Open settings</string>
@@ -306,7 +313,8 @@
     <!-- Void theme + widget refresh settings (fork10) -->
     <string name="void_theme">Void</string>
     <string name="widget">Widget</string>
-    <string name="widget_desc">Home-screen widget</string>
+    <string name="widget_desc">Home-screen widget and notification</string>
+    <string name="widget_and_notification">Widget and notification</string>
     <string name="widget_refresh_title">Refresh interval</string>
 <string name="widget_refresh_desc">How often the widget refreshes on its own. Currently: %1$s. Live mode (QS tile) always updates every second.</string>
     <string name="min_unit">%1$d min</string>

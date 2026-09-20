@@ -40,6 +40,7 @@ import com.rk.commons.utils.formatTemperature
 import com.rk.taskmanager.TaskManager
 import com.rk.taskmanager.daemon.DaemonClient
 import com.rk.taskmanager.data.BatterySampleEntity
+import com.rk.taskmanager.widget.WidgetStats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -178,9 +179,16 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
                 lineSeries {
                     series(
                         x = xs,
+                        // SIGNED mA normalized against the stored charging
+                        // flag: charging above zero, discharging below (the
+                        // raw vendor sign is not comparable between devices).
                         // -1 means "unknown" — plot 0 instead of |−1| mA.
                         y = samples.map {
-                            if (it.currentUA < 0) 0f else abs(it.currentUA / 1000f)
+                            if (it.currentUA < 0) {
+                                0f
+                            } else {
+                                (abs(it.currentUA) * (if (it.charging) 1L else -1L)) / 1000f
+                            }
                         },
                     )
                 }
@@ -250,8 +258,9 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
             )
         }
 
-        // |current| over the selected period; the vendor sign convention is
-        // not normalized by the daemon, so the magnitude is what's plottable.
+        // Signed current over the selected period: charging above zero,
+        // discharging below; the magnitude is always plottable regardless of
+        // the vendor's sign convention.
         if (historyPoints >= 2) {
             Text(
                 text = stringResource(strings.batt_chart_current),
@@ -321,8 +330,20 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     InfoItem(
                                         stringResource(strings.battery_current),
-                                        if (currentLive.currentUA >= 0) {
-                                            String.format(Locale.ENGLISH, "%.0f mA", currentLive.currentUA / 1000.0)
+                                        // Vendor sign conventions differ (on
+                                        // some devices current_now goes
+                                        // NEGATIVE while charging, which used
+                                        // to render as "N/A"). Normalize
+                                        // against the charging flag and show
+                                        // the signed value: + charging,
+                                        // - discharging (same as the widget).
+                                        if (currentLive.currentUA != -1L) {
+                                            WidgetStats.formatCurrent(
+                                                WidgetStats.normalizeCurrentUA(
+                                                    currentLive.currentUA,
+                                                    currentLive.charging,
+                                                )
+                                            )
                                         } else stringResource(strings.no_data)
                                     )
                                 }

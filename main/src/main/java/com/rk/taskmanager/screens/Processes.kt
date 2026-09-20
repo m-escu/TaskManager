@@ -176,6 +176,14 @@ fun Processes(
                 })
 
                 SettingsToggle(default = false, showSwitch = false, startWidget = {
+                    RadioButton(selected = sortBy == ProcessViewModel.Sortby.CpuTime.id, onClick = {
+                        viewModel.setSortBy(ProcessViewModel.Sortby.CpuTime)
+                    })
+                }, label = stringResource(strings.sort_by_cpu_time), description = stringResource(strings.sort_by_cpu_time_desc), sideEffect = {
+                    viewModel.setSortBy(ProcessViewModel.Sortby.CpuTime)
+                })
+
+                SettingsToggle(default = false, showSwitch = false, startWidget = {
                     RadioButton(selected = sortBy == ProcessViewModel.Sortby.A_z.id, onClick = {
                         viewModel.setSortBy(ProcessViewModel.Sortby.A_z)
                     })

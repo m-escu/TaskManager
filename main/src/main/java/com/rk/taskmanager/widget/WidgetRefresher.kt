@@ -21,7 +21,9 @@ internal object WidgetRefresher {
             ramTotal = total,
             currentUA = battery.currentUA,
             tempTenthsC = battery.tempTenthsC,
-            live = WidgetLiveService.isRunning,
+            // LIVE badge only during a QS-tile session; the permanent
+            // notification alone does not make the widget "live".
+            live = WidgetLiveService.liveSession,
         )
     }
 }

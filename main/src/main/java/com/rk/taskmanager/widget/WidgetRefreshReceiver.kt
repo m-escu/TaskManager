@@ -69,7 +69,13 @@ object WidgetRefreshScheduler {
 
         val am = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
         val pi = pendingIntent(context)
-        pi.cancel()
+        // Drop any previously-armed alarm for this intent BEFORE re-arming.
+        // This MUST be am.cancel(pi), NOT pi.cancel(): PendingIntent.cancel()
+        // invalidates the PendingIntent itself, and an alarm registered
+        // afterwards with a cancelled PI is silently dropped on delivery —
+        // the whole refresh chain never fired in the field. AlarmManager
+        // .cancel removes pending alarms while keeping the PI usable.
+        am.cancel(pi)
         val intervalMs = intervalSeconds() * 1000L
         val triggerAt = SystemClock.elapsedRealtime() + intervalMs
         if (canScheduleExact(context)) {

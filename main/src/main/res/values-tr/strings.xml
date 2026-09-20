@@ -97,6 +97,8 @@
     <string name="cpu_time">CPU süresi</string>
     <string name="sort_by_tree">İşlem ağacı</string>
     <string name="sort_by_tree_desc">Alt işlemler ebeveynlerinin altında listelenir</string>
+    <string name="sort_by_cpu_time">CPU süresi</string>
+    <string name="sort_by_cpu_time_desc">İşlemin başlamasından bu yana kullandığı toplam CPU süresi</string>
     <string name="pss_details">Bellek ayrıntıları (PSS)</string>
     <string name="pss_total">Orantılı bellek boyutu (PSS)</string>
     <string name="pss_anon">PSS anonim bellek</string>
@@ -130,6 +132,11 @@
     <string name="net_upload">Yükleme</string>
     <string name="net_per_app">Uygulama başına trafik</string>
     <string name="net_app_traffic">İn %1$s / Çık %2$s</string>
+    <string name="net_app_rate">İn %1$s/sn / Çık %2$s/sn</string>
+    <string name="net_live_chip">Anlık</string>
+    <string name="net_no_active">Şu anda aktif aktarım yok.</string>
+    <string name="net_totals_hint">Seçili dönem için uygulama başına toplam trafik.</string>
+    <string name="net_live_hint">Uygulama başına anlık aktarım hızı, birkaç saniyede bir güncellenir.</string>
     <string name="net_usage_access_desc">Uygulama başına trafik toplamları sistem ağ hesaplamasından gelir ve Kullanım erişimi gerektirir. Root\'lu cihazlarda doğrudan verilebilir.</string>
     <string name="net_grant_via_root">Root ile ver</string>
     <string name="net_open_settings">Ayarları aç</string>
@@ -150,7 +157,8 @@
     <!-- Void teması + widget yenileme ayarları (fork10) -->
     <string name="void_theme">Void</string>
     <string name="widget">Widget</string>
-    <string name="widget_desc">Ana ekran widget\'ı</string>
+    <string name="widget_desc">Ana ekran widget\'ı ve bildirim</string>
+    <string name="widget_and_notification">Widget ve bildirim</string>
     <string name="widget_refresh_title">Yenileme aralığı</string>
 <string name="widget_refresh_desc">Widget\'\u0131n kendili\u011finden yenilenme s\u0131kl\u0131\u011f\u0131. \u015eu an: %1$s. Canl\u0131 mod (QS kutusu) her zaman her saniye g\u00fcnceller.</string>
     <string name="min_unit">%1$d dk</string>

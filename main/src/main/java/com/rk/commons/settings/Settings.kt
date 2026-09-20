@@ -44,8 +44,10 @@ object Settings {
     var permanentNotification by BooleanPref(key = "permanent_notification", default = false)
 
     /** Show the Kill button on system-app rows in the process list.
-     *  Killing a system app ALWAYS asks for confirmation first. */
-    var killSystemApps by BooleanPref(key = "kill_system_apps", default = false)
+     *  Default ON — the button is useless if it has to be discovered in
+     *  Process settings first. Killing a system app ALWAYS asks for
+     *  confirmation before anything happens. */
+    var killSystemApps by BooleanPref(key = "kill_system_apps", default = true)
 
     /** Process-list name colors (ARGB). 0 = theme default text color. */
     var procColorUser by IntPref(key = "proc_color_user", default = 0)

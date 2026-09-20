@@ -54,7 +54,7 @@ class ProcessViewModel : ViewModel() {
 
     enum class Sortby(val id: Int){
         //edit default value in settings.kt of 0
-        Ram(0),Cpu(1),A_z(2),Tree(3)
+        Ram(0),Cpu(1),A_z(2),Tree(3),CpuTime(4)
     }
     private val _sortBy = MutableStateFlow(Settings.sortby)
 
@@ -95,6 +95,7 @@ class ProcessViewModel : ViewModel() {
         val sorted = when (sortBy) {
             Sortby.Ram.id -> filtered.sortedByDescending { it.proc.memoryUsageKb }
             Sortby.Cpu.id -> filtered.sortedByDescending { it.proc.cpuUsage }
+            Sortby.CpuTime.id -> filtered.sortedByDescending { it.proc.cpuTimeTicks }
             Sortby.A_z.id -> filtered.sortedBy { it.name.lowercase() }
             Sortby.Tree.id -> {
                 val (ordered, depths) = buildTree(filtered)

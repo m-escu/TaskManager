@@ -195,6 +195,20 @@ object WidgetStats {
         val tempTenthsC: Int,
     )
 
+    /**
+     * Normalizes a vendor-raw current reading (µA) into the app-wide
+     * convention: POSITIVE = charging, NEGATIVE = discharging. Vendor sign
+     * conventions differ (some report negative while charging), so the
+     * `charging` flag — from the daemon's status parsing or the sticky
+     * battery intent — is the only reliable direction truth. [raw] -1
+     * ("no reading") passes through unchanged; 0 stays 0.
+     */
+    fun normalizeCurrentUA(raw: Long, charging: Boolean): Long = when {
+        raw == -1L -> -1L
+        raw == 0L -> 0L
+        else -> abs(raw) * (if (charging) 1L else -1L)
+    }
+
     /** True when the device is plugged in and charging (or full). */
     fun isCharging(context: Context): Boolean {
         val intent = runCatching {
@@ -218,10 +232,10 @@ object WidgetStats {
                 if (response != null && response.optBoolean("present", true)) {
                     val raw = response.optLong("currentUA", Long.MIN_VALUE)
                     val charging = response.optBoolean("charging", false)
-                    val current = if (raw == Long.MIN_VALUE || raw == 0L) {
-                        raw.takeIf { it != Long.MIN_VALUE } ?: -1L
+                    val current = if (raw == Long.MIN_VALUE) {
+                        -1L
                     } else {
-                        abs(raw) * (if (charging) 1L else -1L)
+                        normalizeCurrentUA(raw, charging)
                     }
                     val temp = response.optInt("tempTenthsC", -1)
                     if (current != -1L || temp != -1) {

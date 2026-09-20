@@ -109,7 +109,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, navController: NavController) 
         )
 
         PreferenceCategory(
-            label = stringResource(strings.widget),
+            label = stringResource(strings.widget_and_notification),
             description = stringResource(strings.widget_desc),
             startWidget = {
                 Icon(imageVector = Icons.Outlined.Widgets, null, tint = MaterialTheme.colorScheme.primary)

@@ -132,6 +132,8 @@
     <!-- Processes Screen -->
     <string name="sort_by_ram">Ordenar por RAM</string>
     <string name="sort_by_cpu">Ordenar por CPU</string>
+    <string name="sort_by_cpu_time">Tempo de CPU</string>
+    <string name="sort_by_cpu_time_desc">Tempo total de CPU usado pelo processo desde o início</string>
     <string name="sort_by_name">Ordenar por Nome (A-z)</string>
     <string name="refresh">Atualizar</string>
     <string name="terminate">Encerrar?</string>
@@ -266,6 +268,11 @@
     <string name="net_upload">Upload</string>
     <string name="net_per_app">Tráfego por app</string>
     <string name="net_app_traffic">Recebido %1$s / Enviado %2$s</string>
+    <string name="net_app_rate">Recebido %1$s/s / Enviado %2$s/s</string>
+    <string name="net_live_chip">Ao vivo</string>
+    <string name="net_no_active">Nenhuma transferência ativa no momento.</string>
+    <string name="net_totals_hint">Tráfego total por app no período selecionado.</string>
+    <string name="net_live_hint">Taxa de transferência atual por app, atualizada a cada poucos segundos.</string>
     <string name="net_usage_access_desc">Os totais por app vêm da contagem de rede do sistema e precisam do acesso de Uso. Em dispositivos com root, pode ser concedido diretamente.</string>
     <string name="net_grant_via_root">Conceder via root</string>
     <string name="net_open_settings">Abrir configurações</string>
@@ -286,7 +293,8 @@
     <!-- Tema Void + configurações de atualização do widget (fork10) -->
     <string name="void_theme">Void</string>
     <string name="widget">Widget</string>
-    <string name="widget_desc">Widget na tela inicial</string>
+    <string name="widget_desc">Widget na tela inicial e notificação</string>
+    <string name="widget_and_notification">Widget e notificação</string>
     <string name="widget_refresh_title">Intervalo de atualização</string>
 <string name="widget_refresh_desc">Com que frequ\u00eancia o widget \u00e9 atualizado sozinho. Atualmente: %1$s. O modo ao vivo (bloco QS) sempre atualiza a cada segundo.</string>
     <string name="min_unit">%1$d min</string>

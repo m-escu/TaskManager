@@ -57,7 +57,7 @@ fun WidgetSettings(modifier: Modifier = Modifier) {
     val intervalSeconds = remember { mutableIntStateOf(WidgetRefreshScheduler.intervalSeconds()) }
     val notifSeconds = remember { mutableIntStateOf(Settings.notifRefreshSeconds) }
 
-    PreferenceLayout(label = stringResource(strings.widget), modifier = modifier) {
+    PreferenceLayout(label = stringResource(strings.widget_and_notification), modifier = modifier) {
         PreferenceGroup(heading = stringResource(strings.widget_refresh_title)) {
             ActionRow(
                 title = stringResource(strings.widget_refresh_title),
