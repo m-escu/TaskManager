@@ -10,9 +10,10 @@ import kotlinx.coroutines.launch
 
 /**
  * Ephemeral widget mode (the default): the system schedules
- * APPWIDGET_UPDATE at least every [android.appwidget.AppWidgetManager]
- * period (30 minutes here); each pass samples public-API stats once and
- * renders. Nothing is kept running between updates — battery cost is zero.
+ * APPWIDGET_UPDATE at least every 30 minutes; each pass samples stats once
+ * and renders. A user-configurable faster cadence comes from
+ * [WidgetRefreshScheduler]; nothing is kept running between updates —
+ * battery cost is zero.
  *
  * The live mode is a separate foreground service ([WidgetLiveService])
  * toggled from the QS tile; this provider never starts it, because widget
@@ -20,6 +21,22 @@ import kotlinx.coroutines.launch
  * starts from there are rejected.
  */
 class TaskManagerWidgetProvider : AppWidgetProvider() {
+
+    override fun onEnabled(context: Context) {
+        // First instance placed -> arm the user-configurable refresh alarm.
+        WidgetRefreshScheduler.schedule(context)
+    }
+
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        // Last instance removed -> stop waking the process for nothing.
+        val manager = AppWidgetManager.getInstance(context)
+        val remaining = manager?.getAppWidgetIds(
+            android.content.ComponentName(context, TaskManagerWidgetProvider::class.java)
+        )
+        if (remaining == null || remaining.isEmpty()) {
+            WidgetRefreshScheduler.cancel(context)
+        }
+    }
 
     override fun onUpdate(
         context: Context,
@@ -33,17 +50,7 @@ class TaskManagerWidgetProvider : AppWidgetProvider() {
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.Default).launch {
             try {
-                val cpu = WidgetStats.cpuUsage()
-                val (used, total) = WidgetStats.readRam(context)
-                val batt = WidgetStats.readBatteryPercent(context)
-                WidgetRenderer.push(
-                    context = context,
-                    cpuPercent = cpu,
-                    ramUsed = used,
-                    ramTotal = total,
-                    batteryPercent = batt,
-                    live = WidgetLiveService.isRunning,
-                )
+                WidgetRefresher.refresh(context)
             } catch (t: Throwable) {
                 Log.w(TAG, "ephemeral widget update failed", t)
             } finally {

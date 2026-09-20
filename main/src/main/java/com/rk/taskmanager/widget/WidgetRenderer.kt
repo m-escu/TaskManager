@@ -19,15 +19,15 @@ object WidgetRenderer {
 
     /**
      * Renders one frame and applies it to every placed instance of the
-     * widget. [cpuPercent] and [batteryPercent] use -1 for "unavailable",
-     * [ramTotal] 0 for "unavailable".
+     * widget. [cpuPercent] uses -1 for "unavailable", [currentUA] -1
+     * (microamps, absolute), [ramTotal] 0 for "unavailable".
      */
     fun push(
         context: Context,
         cpuPercent: Int,
         ramUsed: Long,
         ramTotal: Long,
-        batteryPercent: Int,
+        currentUA: Long,
         live: Boolean,
     ) {
         val manager = AppWidgetManager.getInstance(context) ?: return
@@ -35,7 +35,7 @@ object WidgetRenderer {
             ComponentName(context, TaskManagerWidgetProvider::class.java)
         )
         if (ids.isEmpty()) return
-        val views = build(context, cpuPercent, ramUsed, ramTotal, batteryPercent, live)
+        val views = build(context, cpuPercent, ramUsed, ramTotal, currentUA, live)
         manager.updateAppWidget(ids, views)
     }
 
@@ -44,7 +44,7 @@ object WidgetRenderer {
         cpuPercent: Int,
         ramUsed: Long,
         ramTotal: Long,
-        batteryPercent: Int,
+        currentUA: Long,
         live: Boolean,
     ): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.taskmanager_widget)
@@ -61,8 +61,8 @@ object WidgetRenderer {
             } else noData
         )
         views.setTextViewText(
-            R.id.widget_batt_value,
-            if (batteryPercent >= 0) "$batteryPercent%" else noData
+            R.id.widget_current_value,
+            if (currentUA >= 0L) WidgetStats.formatCurrent(currentUA) else noData
         )
         views.setViewVisibility(
             R.id.widget_live_badge,

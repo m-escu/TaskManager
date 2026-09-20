@@ -64,5 +64,12 @@ class TaskManager : Application() {
         super.onCreate()
         instance = this
         com.rk.commons.application = this
+
+        // Keep the user-configurable widget refresh alarm armed. Self-heals
+        // after reboots/process restarts; a no-op while no widget is placed
+        // (the scheduler checks placed instances first).
+        runCatching {
+            com.rk.taskmanager.widget.WidgetRefreshScheduler.schedule(this)
+        }
     }
 }

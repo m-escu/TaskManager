@@ -3,19 +3,33 @@ package com.rk.taskmanager.widget
 import android.app.ActivityManager
 import android.content.Context
 import android.os.BatteryManager
+import com.rk.commons.settings.Settings
+import com.rk.taskmanager.daemon.DaemonClient
+import com.rk.taskmanager.daemon.isConnected
+import com.rk.taskmanager.settings.WorkingMode
+import com.rk.taskmanager.shizuku.ShizukuShell
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
+import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 
 /**
  * Pure stat collectors for the home-screen widget.
  *
- * Everything here deliberately uses public, root-free APIs so both widget
- * modes keep working when the app is closed and no daemon is connected:
- *  - CPU: deltas of the first /proc/stat line (world-readable on Android,
- *    same technique the app already uses for per-core info)
- *  - RAM: ActivityManager.MemoryInfo
- *  - Battery: BatteryManager.BATTERY_PROPERTY_CAPACITY
+ * CPU sourcing is a fallback chain, because on some devices SELinux blocks
+ * untrusted-app reads of /proc/stat (which showed up as a permanently
+ * missing CPU column in the field):
+ *  1. the daemon's CPU_PING when a connection is alive (exact, cheap),
+ *  2. direct /proc/stat deltas (world-readable on stock Android),
+ *  3. privileged `cat /proc/stat` via the configured working mode
+ *     (su for ROOT, Shizuku shell for SHIZUKU) — grants are already
+ *     persisted by normal app usage, so this never prompts.
+ *
+ * Battery current prefers the daemon's BATTERY_PING heuristics and falls
+ * back to the public BATTERY_PROPERTY_CURRENT_NOW property.
  */
 object WidgetStats {
 
@@ -28,6 +42,11 @@ object WidgetStats {
         @Volatile var idle: Long = 0L
         @Volatile var stampMs: Long = 0L
     }
+
+    private const val PRIVILEGED_MIN_INTERVAL_MS = 250L
+
+    @Volatile
+    private var lastPrivilegedReadMs = 0L
 
     /**
      * Parses a "cpu  user nice system idle iowait ..." line into
@@ -53,12 +72,60 @@ object WidgetStats {
         return ((busy * 100L) / dTotal).toInt().coerceIn(0, 100)
     }
 
-    private fun readProcStatLine(): String? = runCatching {
+    /** Daemon CPU usage (0..100), or null when disconnected/unavailable. */
+    private suspend fun cpuFromDaemon(): Int? {
+        if (!isConnected) return null
+        return runCatching {
+            DaemonClient.cpu()?.optInt("usage", -1)?.takeIf { it in 0..100 }
+        }.getOrNull()
+    }
+
+    private fun readProcStatDirect(): String? = runCatching {
         File("/proc/stat").bufferedReader().use { it.readLine() }
     }.getOrNull()
 
+    private fun readProcStatViaSu(): String? = runCatching {
+        val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "cat /proc/stat"))
+        val line = process.inputStream.bufferedReader().readLine()
+        if (process.isAlive) process.waitFor(2, TimeUnit.SECONDS)
+        if (process.isAlive) process.destroy()
+        line
+    }.getOrNull()
+
+    private suspend fun readProcStatViaShizuku(): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            if (ShizukuShell.isShizukuRunning().not() || ShizukuShell.isPermissionGranted().not()) {
+                return@runCatching null
+            }
+            val process = ShizukuShell.startStreamingProcess(
+                cmd = arrayOf<String?>("cat", "/proc/stat"),
+                env = arrayOf<String?>(),
+                dir = "/",
+            )
+            process.inputStream.bufferedReader().readLine()
+        }.getOrNull()
+    }
+
+    /**
+     * One /proc/stat first line: direct read when possible, otherwise a
+     * throttled privileged read through the configured working mode.
+     */
+    private suspend fun readProcStatLine(): String? {
+        readProcStatDirect()?.let { return it }
+
+        val now = System.currentTimeMillis()
+        if (now - lastPrivilegedReadMs < PRIVILEGED_MIN_INTERVAL_MS) return null
+        lastPrivilegedReadMs = now
+
+        return when (Settings.workingMode) {
+            WorkingMode.ROOT.id -> readProcStatViaSu()
+            WorkingMode.SHIZUKU.id -> readProcStatViaShizuku()
+            else -> null
+        }
+    }
+
     /** Reads /proc/stat, stores the sample in [CpuStore] and returns it. */
-    fun sampleCpuTimes(): Pair<Long, Long>? {
+    suspend fun sampleCpuTimes(): Pair<Long, Long>? {
         val parsed = parseCpuTimes(readProcStatLine()) ?: return null
         CpuStore.total = parsed.first
         CpuStore.idle = parsed.second
@@ -73,6 +140,8 @@ object WidgetStats {
      * Returns -1 on failure.
      */
     suspend fun cpuUsage(settleMs: Long = 350L): Int {
+        cpuFromDaemon()?.let { return it }
+
         val prevTotal = CpuStore.total
         val prevIdle = CpuStore.idle
         val age = System.currentTimeMillis() - CpuStore.stampMs
@@ -100,7 +169,7 @@ object WidgetStats {
         return used to total
     }
 
-    /** Battery percentage 0..100, or -1 when unavailable. */
+    /** Battery percentage 0..100, or -1 when unavailable (notification). */
     fun readBatteryPercent(context: Context): Int {
         val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
             ?: return -1
@@ -108,6 +177,38 @@ object WidgetStats {
             bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         }.getOrNull() ?: return -1
         return if (value in 1..100) value else -1
+    }
+
+    /**
+     * Battery |current| in microamps: daemon BATTERY_PING when connected
+     * (vendor-unit heuristics, same source as the battery screen), else the
+     * public BATTERY_PROPERTY_CURRENT_NOW. Returns -1 when unknown. Sign
+     * conventions differ per vendor (charging may be negative), hence abs.
+     */
+    suspend fun readCurrentUA(context: Context): Long {
+        if (isConnected) {
+            runCatching {
+                val response = DaemonClient.battery()
+                if (response != null && response.optBoolean("present", true)) {
+                    val ua = response.optLong("currentUA", -1L)
+                    if (ua != -1L) return abs(ua)
+                }
+            }
+        }
+
+        val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+            ?: return -1L
+        val value = runCatching {
+            bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+        }.getOrNull() ?: return -1L
+        if (value == 0 || value == Int.MIN_VALUE) return -1L
+        return abs(value.toLong())
+    }
+
+    /** Compact current for the widget column: 1.23A above 1 A, else 850mA. */
+    fun formatCurrent(ua: Long): String = when {
+        ua >= 1_000_000L -> String.format(Locale.US, "%.2fA", ua / 1_000_000.0)
+        else -> String.format(Locale.US, "%.0fmA", ua / 1000.0)
     }
 
     /** Compact byte size for the narrow widget column: 4.6G / 512M / 64K. */

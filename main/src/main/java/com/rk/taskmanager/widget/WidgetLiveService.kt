@@ -14,9 +14,12 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.rk.commons.settings.Settings
 import com.rk.commons.strings
 import com.rk.taskmanager.MainActivity
 import com.rk.taskmanager.R
+import com.rk.taskmanager.daemon.isConnected
+import com.rk.taskmanager.daemon.startDaemon
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,15 +31,15 @@ import kotlinx.coroutines.launch
 
 /**
  * Live widget mode: pushes a fresh sample to every widget once per second
- * and mirrors the same numbers into the foreground notification, so the
- * session is visible and cancellable like any other media-style FGS.
+ * and mirrors CPU/RAM/Battery into the foreground notification.
  *
  * Toggled by the QS tile ([LiveTileService]); also stops itself
  * automatically when the last widget instance is removed from home.
  *
- * Deliberately daemon-free: CPU/RAM/battery all come from public APIs
- * ([WidgetStats]), so live mode works regardless of working mode and never
- * pops a su/Shizuku prompt while the screen is off.
+ * Data sources: the daemon is attached on start when a working mode is
+ * configured (grants are already persisted, so no prompt ever fires while
+ * the screen is off); every collector falls back to public APIs, so the
+ * widget stays alive even with no daemon at all.
  */
 class WidgetLiveService : Service() {
 
@@ -60,6 +63,14 @@ class WidgetLiveService : Service() {
 
     private var loopJob: Job? = null
 
+    // Last rendered values — re-pushed with live=false in onDestroy so the
+    // LIVE badge disappears the moment the session ends, not at the next
+    // ephemeral pass up to 30 minutes later.
+    @Volatile private var lastCpu = -1
+    @Volatile private var lastRamUsed = 0L
+    @Volatile private var lastRamTotal = 0L
+    @Volatile private var lastCurrentUA = -1L
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -71,13 +82,40 @@ class WidgetLiveService : Service() {
         startInForeground()
         isRunning = true
         ensureLoop()
+        attachDaemon()
         return START_STICKY
     }
 
     override fun onDestroy() {
         isRunning = false
+        runCatching {
+            WidgetRenderer.push(
+                context = this,
+                cpuPercent = lastCpu,
+                ramUsed = lastRamUsed,
+                ramTotal = lastRamTotal,
+                currentUA = lastCurrentUA,
+                live = false,
+            )
+        }
         scope.cancel()
         super.onDestroy()
+    }
+
+    /**
+     * Fire-and-forget daemon attach: gives live mode exact CPU/battery
+     * readings whenever the configured working mode (ROOT/Shizuku) can be
+     * satisfied silently. Failures are fine — every collector has a
+     * public-API fallback.
+     */
+    private fun attachDaemon() {
+        scope.launch {
+            runCatching {
+                if (!isConnected) {
+                    startDaemon(this@WidgetLiveService, Settings.workingMode)
+                }
+            }
+        }
     }
 
     private fun ensureLoop() {
@@ -88,19 +126,28 @@ class WidgetLiveService : Service() {
                 try {
                     val cpu = WidgetStats.cpuUsage()
                     val (used, total) = WidgetStats.readRam(this@WidgetLiveService)
-                    val batt = WidgetStats.readBatteryPercent(this@WidgetLiveService)
+                    val currentUA = WidgetStats.readCurrentUA(this@WidgetLiveService)
 
                     WidgetRenderer.push(
                         context = this@WidgetLiveService,
                         cpuPercent = cpu,
                         ramUsed = used,
                         ramTotal = total,
-                        batteryPercent = batt,
+                        currentUA = currentUA,
                         live = true,
                     )
+                    lastCpu = cpu
+                    lastRamUsed = used
+                    lastRamTotal = total
+                    lastCurrentUA = currentUA
 
                     if (tick % NOTIF_UPDATE_EVERY_TICKS == 0) {
-                        updateNotification(cpu, used, total, batt)
+                        updateNotification(
+                            cpu = cpu,
+                            ramUsed = used,
+                            ramTotal = total,
+                            batt = WidgetStats.readBatteryPercent(this@WidgetLiveService),
+                        )
                     }
                     tick++
 

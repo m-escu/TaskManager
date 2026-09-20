@@ -69,6 +69,13 @@
                 android:resource="@xml/taskmanager_widget_info" />
         </receiver>
 
+        <!-- User-configurable ephemeral refresh (Settings -> Widget); a
+             non-wakeup inexact repeating alarm, armed only while at least
+             one widget is placed. -->
+        <receiver
+            android:name=".widget.WidgetRefreshReceiver"
+            android:exported="false" />
+
         <!-- Live widget mode: 1 Hz public-API samples pushed to every
              widget and mirrored into a persistent notification. Toggled
              from the QS tile below. -->

@@ -132,6 +132,11 @@ object DaemonClient {
 
     // -- Typed wrappers over the Phase-2 daemon commands (used by Phase-4 screens) --
 
+    /** Total CPU usage 0..100 (`CPU_PING`, answered from the daemon's
+     *  non-blocking sampler thread). */
+    suspend fun cpu(timeoutMs: Long = 3_000): JSONObject? =
+        DaemonServer.request(JSONObject().put("cmd", "CPU_PING"), timeoutMs)
+
     /** Per-core usage + frequencies (`CORE_PING`). */
     suspend fun cores(timeoutMs: Long = 5_000): JSONObject? =
         DaemonServer.request(JSONObject().put("cmd", "CORE_PING"), timeoutMs)

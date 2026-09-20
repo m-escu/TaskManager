@@ -25,6 +25,11 @@ object Settings {
     var useImperialUnits by BooleanPref(key = "use_imperial_units", default = false)
     var batteryCurrentUnit by IntPref(key = "battery_current_unit", default = BatteryCurrentUnit.UNKNOWN)
 
+    /** Home-screen widget ephemeral refresh interval in minutes. 15 is the
+     *  system floor for inexact repeating alarms; the stock APPWIDGET_UPDATE
+     *  cadence (30 min) always remains as a backstop. */
+    var widgetRefreshMinutes by IntPref(key = "widget_refresh_minutes", default = 30)
+
     /** How the Kill button stops processes: 0 = ask, 1 = terminate (SIGTERM->SIGKILL), 2 = force (SIGKILL). */
     var defaultKillAction by IntPref(key = "default_kill_action", default = 0)
 

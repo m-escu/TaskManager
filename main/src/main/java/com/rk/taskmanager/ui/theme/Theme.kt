@@ -26,7 +26,8 @@ val themes = hashMapOf(
     0 to Wave,
     1 to Leaf,
     2 to Flame,
-    3 to Cosmos
+    3 to Cosmos,
+    4 to VoidTheme
 )
 
 var currentTheme = mutableIntStateOf(Settings.theme)
