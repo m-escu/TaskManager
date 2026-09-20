@@ -34,6 +34,7 @@ import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
 import com.patrykandpatrick.vico.core.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.core.cartesian.data.lineSeries
 import com.rk.commons.charts.ChartConfig
+import com.rk.commons.charts.GraphDataHandler
 import com.rk.commons.charts.UsageChart
 import com.rk.commons.getString
 import com.rk.commons.settings.Settings
@@ -45,6 +46,9 @@ import com.rk.commons.utils.formatTemperature
 import com.rk.taskmanager.TaskManager
 import com.rk.taskmanager.daemon.DaemonClient
 import com.rk.taskmanager.data.BatterySampleEntity
+import com.rk.taskmanager.navControllerRef
+import com.rk.taskmanager.screens.selectedscreen
+import com.rk.taskmanager.settings.SettingsRoutes
 import com.rk.taskmanager.widget.WidgetStats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -57,7 +61,6 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlin.math.abs
 
 /** Live battery values parsed from BATTERY_PING; known=false on daemon ERROR. */
 data class BatteryLive(
@@ -117,6 +120,19 @@ private val HISTORY_PERIODS_DAYS = intArrayOf(1, 7, 30)
 private const val TAG = "BatteryScreen"
 
 /**
+ * Live sliding windows for the battery tab (the net-tab pattern): 120
+ * points at 1 Hz = a 2-minute real-time curve. Fed only while this screen
+ * is composed; the charts keep whatever the window last held between visits.
+ */
+private val liveLevelGraphHandler = GraphDataHandler(seriesCount = 1)
+private val liveCurrentGraphHandler = GraphDataHandler(seriesCount = 1)
+
+/** Same visibility gate the CPU/RAM/GPU/net live charts use (see NetScreen). */
+private fun liveChartGate(): Boolean =
+    selectedscreen.intValue == 0 &&
+        navControllerRef.get()?.currentDestination?.route == SettingsRoutes.Home.route
+
+/**
  * Battery screen (fork decision #4): live stats from the daemon's
  * BATTERY_PING plus a local, Room-backed history with a 30-day rolling
  * window. Samples are recorded once a minute while this screen is open;
@@ -129,6 +145,12 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
     var live by remember { mutableStateOf<BatteryLive?>(null) }
     var periodDays by rememberSaveable { mutableIntStateOf(1) }
     var sampleCount by remember { mutableIntStateOf(0) }
+
+    // Chart-slot mode: live sliding window (default — the user opens the
+    // tab to see what the battery is doing NOW) or the recorded history for
+    // the selected period. Same default as the net tab; the choice survives
+    // while the process lives (rememberSaveable).
+    var liveMode by rememberSaveable { mutableStateOf(true) }
 
     // Bumped when the user resets the history. Vico 2.0.3 FORBIDS feeding a
     // chart slot a new producer instance while it stays composed (its
@@ -147,10 +169,26 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
     var showResetConfirm by remember { mutableStateOf(false) }
 
     // Live polling (request-id correlated; legacy daemons degrade gracefully).
-    LaunchedEffect(Unit) {
+    // In Live mode the poll runs at 1 Hz and feeds the two sliding-window
+    // charts — BATTERY_PING at 1 Hz is exactly what the widget's live
+    // service already does, so the daemon load is proven fine; otherwise
+    // 5 s is plenty for the stats cards below. Current is signed exactly
+    // like the history curve: + charging, - discharging, vendor sign
+    // normalized away, -1 (unknown) plots as 0.
+    LaunchedEffect(liveMode) {
         while (isActive) {
-            live = parseBattery(DaemonClient.battery(timeoutMs = 2_500))
-            delay(5_000)
+            val parsed = parseBattery(DaemonClient.battery(timeoutMs = 2_500))
+            live = parsed
+            if (liveMode && parsed != null && parsed.known && parsed.present) {
+                val ua = WidgetStats.normalizeCurrentUA(parsed.currentUA, parsed.charging)
+                if (parsed.capacity in 0..100) {
+                    liveLevelGraphHandler.update(parsed.capacity) { liveChartGate() }
+                }
+                liveCurrentGraphHandler.update(
+                    if (ua == -1L) 0 else (ua / 1000).toInt()
+                ) { liveChartGate() }
+            }
+            delay(if (liveMode) 1_000L else 5_000L)
         }
     }
 
@@ -197,16 +235,16 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
                 lineSeries {
                     series(
                         x = xs,
-                        // SIGNED mA normalized against the stored charging
-                        // flag: charging above zero, discharging below (the
-                        // raw vendor sign is not comparable between devices).
-                        // -1 means "unknown" — plot 0 instead of |−1| mA.
                         y = samples.map {
-                            if (it.currentUA < 0) {
-                                0f
-                            } else {
-                                (abs(it.currentUA) * (if (it.charging) 1L else -1L)) / 1000f
-                            }
+                            // Signed mA normalized against the stored charging
+                            // flag: charging above zero, discharging below.
+                            // The daemon passes the vendor-raw sign through
+                            // (on some devices charging reads NEGATIVE), so
+                            // the old "< 0 means unknown" check flattened
+                            // every charging sample on those devices; -1
+                            // remains the only unknown sentinel.
+                            val ua = WidgetStats.normalizeCurrentUA(it.currentUA, it.charging)
+                            if (ua == -1L) 0f else ua / 1000f
                         },
                     )
                 }
@@ -237,13 +275,23 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
             modifier = Modifier.padding(horizontal = 16.dp)
         )
 
-        key(historyGeneration) {
+        if (liveMode) {
+            // Zero-seeded 2-minute window; level keeps the shared 0–100 %
+            // formatting, exactly like the history chart.
             UsageChart(
-                modelProducer = capacityProducer,
+                modelProducer = liveLevelGraphHandler.modelProducer,
                 lineColors = listOf(MaterialTheme.colorScheme.primary),
                 modifier = modifier.fillMaxWidth(),
-                bottomAxisFormatter = timeAxisFormatter,
             )
+        } else {
+            key(historyGeneration) {
+                UsageChart(
+                    modelProducer = capacityProducer,
+                    lineColors = listOf(MaterialTheme.colorScheme.primary),
+                    modifier = modifier.fillMaxWidth(),
+                    bottomAxisFormatter = timeAxisFormatter,
+                )
+            }
         }
 
         Row(
@@ -252,10 +300,22 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
                 .padding(horizontal = 16.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // Same chip semantics as the net tab: Live first (default), then
+            // the recorded-history periods. The chip label reuses
+            // net_live_chip — same concept, same word (batt_last_* are
+            // already shared the other way round).
+            FilterChip(
+                selected = liveMode,
+                onClick = { liveMode = true },
+                label = { Text(stringResource(strings.net_live_chip)) }
+            )
             HISTORY_PERIODS_DAYS.forEach { days ->
                 FilterChip(
-                    selected = periodDays == days,
-                    onClick = { periodDays = days },
+                    selected = !liveMode && periodDays == days,
+                    onClick = {
+                        liveMode = false
+                        periodDays = days
+                    },
                     label = {
                         Text(
                             when (days) {
@@ -269,7 +329,14 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        if (historyPoints < 2) {
+        if (liveMode) {
+            Text(
+                text = stringResource(strings.batt_live_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+        } else if (historyPoints < 2) {
             Text(
                 text = stringResource(strings.batt_no_data_yet),
                 style = MaterialTheme.typography.bodySmall,
@@ -278,25 +345,36 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
             )
         }
 
-        // Signed current over the selected period: charging above zero,
-        // discharging below; the magnitude is always plottable regardless of
-        // the vendor's sign convention.
-        if (historyPoints >= 2) {
+        // Signed current: charging above zero, discharging below. Live mode
+        // always has data (the window is zero-seeded); the history curve
+        // needs at least two samples before Vico accepts the series.
+        if (liveMode || historyPoints >= 2) {
             Text(
                 text = stringResource(strings.batt_chart_current),
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
-            key(historyGeneration) {
+            if (liveMode) {
                 UsageChart(
-                    modelProducer = currentProducer,
+                    modelProducer = liveCurrentGraphHandler.modelProducer,
                     lineColors = listOf(MaterialTheme.colorScheme.tertiary),
                     modifier = modifier.fillMaxWidth(),
                     rangeProvider = ChartConfig.AutoRangeProvider,
                     valueFormatter = ChartConfig.PlainStartAxisValueFormatter,
                     markerValueFormatter = ChartConfig.PlainMarkerValueFormatter,
-                    bottomAxisFormatter = timeAxisFormatter,
                 )
+            } else {
+                key(historyGeneration) {
+                    UsageChart(
+                        modelProducer = currentProducer,
+                        lineColors = listOf(MaterialTheme.colorScheme.tertiary),
+                        modifier = modifier.fillMaxWidth(),
+                        rangeProvider = ChartConfig.AutoRangeProvider,
+                        valueFormatter = ChartConfig.PlainStartAxisValueFormatter,
+                        markerValueFormatter = ChartConfig.PlainMarkerValueFormatter,
+                        bottomAxisFormatter = timeAxisFormatter,
+                    )
+                }
             }
         }
 
@@ -528,6 +606,10 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
                         sampleCount = 0
                         historyPoints = 0
                         historyGeneration++
+                        // Blank the live windows too so the whole tab reads
+                        // as "from scratch" (they refill within ~2 min).
+                        liveLevelGraphHandler.reset()
+                        liveCurrentGraphHandler.reset()
                         Toast.makeText(
                             context,
                             strings.batt_reset_done.getString(),

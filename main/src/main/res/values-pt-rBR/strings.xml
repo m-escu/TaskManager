@@ -368,4 +368,7 @@
     <string name="batt_alert_channel">Alertas da bateria</string>
     <string name="batt_alert_drain">Descarga alta da bateria: %1$s (acima de %2$s por %3$s)</string>
     <string name="batt_alert_temp">Temperatura alta da bateria: %1$s (acima de %2$s por %3$s)</string>
+
+    <!-- fork16: graficos ao vivo da bateria -->
+    <string name="batt_live_hint">Leituras ao vivo, atualizadas a cada segundo.</string>
 </resources>

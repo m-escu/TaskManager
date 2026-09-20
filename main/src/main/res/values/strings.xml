@@ -388,4 +388,7 @@
     <string name="batt_alert_channel">Battery alerts</string>
     <string name="batt_alert_drain">High battery drain: %1$s (above %2$s for %3$s)</string>
     <string name="batt_alert_temp">High battery temperature: %1$s (above %2$s for %3$s)</string>
+
+    <!-- fork16: live battery charts -->
+    <string name="batt_live_hint">Live readings, updated every second.</string>
 </resources>

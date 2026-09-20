@@ -233,4 +233,7 @@
     <string name="batt_alert_channel">Pil uyarıları</string>
     <string name="batt_alert_drain">Pil deşarjı yüksek: %1$s (%2$s üzerinde, %3$s)</string>
     <string name="batt_alert_temp">Pil sıcaklığı yüksek: %1$s (%2$s üzerinde, %3$s)</string>
+
+    <!-- fork16: canli pil grafikleri -->
+    <string name="batt_live_hint">Canlı veriler, her saniye güncellenir.</string>
 </resources>

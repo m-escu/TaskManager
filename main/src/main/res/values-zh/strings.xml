@@ -367,4 +367,7 @@
     <string name="batt_alert_channel">电池警报</string>
     <string name="batt_alert_drain">电池放电过高：%1$s（已超过 %2$s 持续 %3$s）</string>
     <string name="batt_alert_temp">电池温度过高：%1$s（已超过 %2$s 持续 %3$s）</string>
+
+    <!-- fork16: 电池实时图表 -->
+    <string name="batt_live_hint">实时读数，每秒刷新一次。</string>
 </resources>

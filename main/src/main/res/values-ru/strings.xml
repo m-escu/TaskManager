@@ -357,4 +357,7 @@
     <string name="batt_alert_channel">Оповещения батареи</string>
     <string name="batt_alert_drain">Высокий разряд батареи: %1$s (выше %2$s уже %3$s)</string>
     <string name="batt_alert_temp">Высокая температура батареи: %1$s (выше %2$s уже %3$s)</string>
+
+    <!-- fork16: живые графики батареи -->
+    <string name="batt_live_hint">Данные в реальном времени, обновление каждую секунду.</string>
 </resources>
