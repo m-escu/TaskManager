@@ -128,6 +128,18 @@ fun WidgetSettings(modifier: Modifier = Modifier) {
                 ),
                 onClick = { showNotifDialog = true },
             )
+
+            // Whether a reboot brings the permanent notification back. The
+            // pref above says WHAT should run; this one says whether it
+            // survives device restarts. No service interaction needed — the
+            // boot receiver reads it on BOOT_COMPLETED.
+            SettingsToggle(
+                label = stringResource(strings.start_at_boot),
+                description = stringResource(strings.start_at_boot_desc),
+                default = Settings.startAtBoot,
+                showSwitch = true,
+                sideEffect = { enabled -> Settings.startAtBoot = enabled },
+            )
         }
     }
 

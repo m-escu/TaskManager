@@ -98,7 +98,7 @@
     <string name="pull_to_refresh">Puxar para atualizar</string>
     <string name="pull_to_refresh_desc">Permitir puxar para atualizar na tela de processos</string>
     <string name="confirm_stop">Confirmar parada</string>
-    <string name="confirm_stop_desc">Confirmar antes de finalizar um processo</string>
+    <string name="confirm_stop_desc">Mostra um diálogo de confirmação antes de parar um processo, oferecendo a ação de encerramento padrão (uma escolha quando a ação é Perguntar). Apps do sistema sempre pedem confirmação.</string>
     <string name="default_to_process">Padrão na tela de processos</string>
     <string name="default_to_process_desc">Mostrar a tela de processos por padrão</string>
     <string name="auto_refresh">Atualização Automática</string>
@@ -134,6 +134,11 @@
     <string name="sort_by_cpu">Ordenar por CPU</string>
     <string name="sort_by_cpu_time">Tempo de CPU</string>
     <string name="sort_by_cpu_time_desc">Tempo total de CPU usado pelo processo desde o início</string>
+    <string name="sort_by_cpu_avg_desc">Carga de CPU média durante toda a vida do processo</string>
+    <string name="sort_by_cpu_avg">CPU médio</string>
+    <string name="avg_cpu_short">méd. %1$s%%</string>
+    <string name="avg_cpu_since_start">desde o início</string>
+    <string name="avg_cpu_usage">Uso médio de CPU</string>
     <string name="sort_by_name">Ordenar por Nome (A-z)</string>
     <string name="refresh">Atualizar</string>
     <string name="terminate">Encerrar?</string>
@@ -209,7 +214,7 @@
 
     <!-- Kill behavior -->
     <string name="kill_action">Ação de encerramento padrão</string>
-    <string name="kill_action_desc">Como o botão Encerrar interrompe os processos</string>
+    <string name="kill_action_desc">Usado em paradas imediatas e oferecido como ação no diálogo de confirmação</string>
     <string name="kill_action_ask">Perguntar sempre</string>
     <string name="kill_action_terminate">Encerrar</string>
     <string name="kill_action_terminate_desc">SIGTERM primeiro, encerramento forçado após o período de espera</string>
@@ -231,7 +236,7 @@
     <string name="legacy_daemon_msg">O daemon em execução usa um protocolo antigo (v%1$d). Alguns recursos ficam indisponíveis. Feche totalmente o aplicativo e inicie o daemon novamente para atualizá-lo.</string>
 
     <string name="show_cpu_time">Mostrar tempo de CPU</string>
-    <string name="show_cpu_time_desc">As linhas de processo mostram tempo de processador acumulado em vez de percentual instantâneo</string>
+    <string name="show_cpu_time_desc">As linhas de processos mostram o tempo total de processador além da porcentagem instantânea</string>
     <string name="cpu_time">Tempo de CPU</string>
     <string name="sort_by_tree">Árvore de processos</string>
     <string name="sort_by_tree_desc">Processos filhos listados sob o pai</string>
@@ -263,6 +268,10 @@
     <string name="batt_recording">Registro do histórico</string>
     <string name="batt_recording_desc">Uma amostra é salva a cada minuto com esta tela aberta. O histórico é mantido por 30 dias e nunca sai do dispositivo.</string>
     <string name="batt_samples_stored">Amostras armazenadas: %1$d</string>
+    <string name="batt_reset_done">Histórico da bateria limpo</string>
+    <string name="batt_reset_confirm_text">Todas as amostras de bateria armazenadas serão excluídas permanentemente.</string>
+    <string name="batt_reset_confirm_title">Redefinir os gráficos da bateria?</string>
+    <string name="batt_reset_history">Redefinir dados dos gráficos</string>
     <string name="net_live_rates">Taxas em tempo real</string>
     <string name="net_download">Download</string>
     <string name="net_upload">Upload</string>
@@ -330,5 +339,7 @@
     <string name="color_reset_hint">Deixe vazio para voltar \u00e0 cor padr\u00e3o.</string>
     <string name="permanent_notification">Notifica\u00e7\u00e3o permanente</string>
     <string name="permanent_notification_desc">Mant\u00e9m a notifica\u00e7\u00e3o do monitor ao vivo ativa pelo pr\u00f3prio app, sem o bloco QS. Sobrevive a reinicializa\u00e7\u00f5es. Desligar para o servi\u00e7o, a menos que uma sess\u00e3o ao vivo esteja ativa.</string>
+    <string name="start_at_boot_desc">Restaurar a notificação permanente após o dispositivo reiniciar</string>
+    <string name="start_at_boot">Iniciar na inicialização</string>
 
 </resources>

@@ -43,6 +43,9 @@ interface BatterySampleDao {
     @Query("DELETE FROM battery_samples WHERE timestamp < :cutoff")
     suspend fun prune(cutoff: Long)
 
+    @Query("DELETE FROM battery_samples")
+    suspend fun clearAll()
+
     @Query("SELECT * FROM battery_samples WHERE timestamp >= :since ORDER BY timestamp ASC")
     suspend fun since(since: Long): List<BatterySampleEntity>
 

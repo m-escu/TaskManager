@@ -406,6 +406,19 @@ fun ProcessInfo(
                         text = stringResource(strings.cpu_time),
                         description = formatCpuTicks(proc!!.proc.cpuTimeTicks)
                     )
+
+                    // Lifetime-average load: the cumulative CPU time spread
+                    // over the process's whole lifetime — the stable
+                    // counterpart to the spiky instantaneous reading above.
+                    TextCard(
+                        text = stringResource(strings.avg_cpu_usage),
+                        description = if (proc!!.proc.avgCpuPercent >= 0f) {
+                            String.format(Locale.ENGLISH, "%.1f%%", proc!!.proc.avgCpuPercent) +
+                                " (${strings.avg_cpu_since_start.getString()})"
+                        } else {
+                            strings.no_data.getString()
+                        }
+                    )
                     TextCard(
                         text = stringResource(strings.is_foreground),
                         description = proc!!.proc.isForeground.toString()
@@ -629,17 +642,13 @@ fun ProcessInfo(
 
     if (showKillDialog != null) {
         val target = showKillDialog
-        // Fork policy: system apps ALWAYS get a confirmation; normal apps
-        // are confirmed only in ASK mode (an explicit default action is the
-        // user's confirmation).
+        // Kill policy (fork14): "Confirm stop" is the MASTER switch for the
+        // dialog (previously the dialog only appeared in Ask mode, so the
+        // toggle looked dead). With it on, the dialog offers the configured
+        // default action; with it off, the default action runs immediately
+        // (Ask resolves to Terminate). System apps ALWAYS confirm.
         val alwaysAsk = target?.isSystemApp == true
-        if (alwaysAsk || (
-                com.rk.taskmanager.daemon.KillAction.fromId(
-                    com.rk.commons.settings.Settings.defaultKillAction
-                ) == com.rk.taskmanager.daemon.KillAction.ASK &&
-                    com.rk.commons.settings.Settings.confirmkill
-                )
-        ) {
+        if (alwaysAsk || com.rk.commons.settings.Settings.confirmkill) {
             KillConfirmDialog(
                 processName = target?.name ?: "",
                 forceAsk = alwaysAsk,

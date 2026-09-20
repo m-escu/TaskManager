@@ -110,7 +110,7 @@
     <string name="pull_to_refresh">Pull to refresh</string>
     <string name="pull_to_refresh_desc">Allow pull to refresh in the processes screen</string>
     <string name="confirm_stop">Confirm stop</string>
-    <string name="confirm_stop_desc">Confirm before killing a process</string>
+    <string name="confirm_stop_desc">Show a confirmation dialog before stopping a process, offering the default kill action (a choice when the action is set to Ask). System apps always ask.</string>
     <string name="default_to_process">Default to process screen</string>
     <string name="default_to_process_desc">Show processes screen by default</string>
     <string name="auto_refresh">Auto Refresh</string>
@@ -146,6 +146,11 @@
     <string name="sort_by_cpu">Sort by CPU</string>
     <string name="sort_by_cpu_time">CPU time</string>
     <string name="sort_by_cpu_time_desc">Total CPU time the process has used since it started</string>
+    <string name="sort_by_cpu_avg_desc">CPU load averaged over the process’s whole lifetime</string>
+    <string name="sort_by_cpu_avg">Average CPU</string>
+    <string name="avg_cpu_short">avg %1$s%%</string>
+    <string name="avg_cpu_since_start">since start</string>
+    <string name="avg_cpu_usage">Average CPU usage</string>
     <string name="sort_by_name">Sort by Name (A-z)</string>
     <string name="refresh">Refresh</string>
     <string name="terminate">Terminate?</string>
@@ -229,7 +234,7 @@
 
     <!-- Kill behavior -->
     <string name="kill_action">Default kill action</string>
-    <string name="kill_action_desc">How the Kill button stops processes</string>
+    <string name="kill_action_desc">Used for immediate stops and offered as the action in the confirmation dialog</string>
     <string name="kill_action_ask">Ask every time</string>
     <string name="kill_action_terminate">Terminate</string>
     <string name="kill_action_terminate_desc">SIGTERM first, force kill after the grace period</string>
@@ -251,7 +256,7 @@
     <string name="legacy_daemon_msg">The running daemon speaks an older protocol (v%1$d). Some features are unavailable. Fully close the app and start the daemon again to update it.</string>
 
     <string name="show_cpu_time">Show CPU time</string>
-    <string name="show_cpu_time_desc">Process rows show cumulative processor time instead of instantaneous usage percentage</string>
+    <string name="show_cpu_time_desc">Process rows show cumulative processor time in addition to the instantaneous percentage</string>
     <string name="cpu_time">CPU time</string>
     <string name="sort_by_tree">Process tree</string>
     <string name="sort_by_tree_desc">Children listed under their parent</string>
@@ -283,6 +288,10 @@
     <string name="batt_recording">History recording</string>
     <string name="batt_recording_desc">One sample is stored every minute while this screen is open. History is kept for 30 days and never leaves the device.</string>
     <string name="batt_samples_stored">Samples stored: %1$d</string>
+    <string name="batt_reset_done">Battery history cleared</string>
+    <string name="batt_reset_confirm_text">All stored battery samples will be permanently deleted.</string>
+    <string name="batt_reset_confirm_title">Reset battery graphs?</string>
+    <string name="batt_reset_history">Reset graph data</string>
     <string name="net_live_rates">Live rates</string>
     <string name="net_download">Download</string>
     <string name="net_upload">Upload</string>
@@ -350,5 +359,7 @@
     <string name="color_reset_hint">Leave empty to reset to the default color.</string>
     <string name="permanent_notification">Permanent notification</string>
     <string name="permanent_notification_desc">Keep the live monitor notification running from the app itself, no QS tile needed. Survives reboots. Toggling it off stops the service unless a live session is active.</string>
+    <string name="start_at_boot_desc">Restore the permanent notification after the device restarts</string>
+    <string name="start_at_boot">Start at boot</string>
 
 </resources>

@@ -43,6 +43,11 @@ object Settings {
      *  (no QS tile needed). Survives reboots via the boot receiver. */
     var permanentNotification by BooleanPref(key = "permanent_notification", default = false)
 
+    /** Whether the boot receiver restores the permanent notification after a
+     *  reboot (only relevant when [permanentNotification] is on). Default ON
+     *  keeps the behavior the permanent-notification pref always advertised. */
+    var startAtBoot by BooleanPref(key = "start_at_boot", default = true)
+
     /** Show the Kill button on system-app rows in the process list.
      *  Default ON — the button is useless if it has to be discovered in
      *  Process settings first. Killing a system app ALWAYS asks for

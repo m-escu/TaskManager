@@ -1,6 +1,7 @@
 package com.rk.taskmanager.screens.battery
 
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,16 +11,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -44,6 +48,7 @@ import com.rk.taskmanager.widget.WidgetStats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.time.Instant
@@ -124,9 +129,16 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
     var periodDays by rememberSaveable { mutableIntStateOf(1) }
     var sampleCount by remember { mutableIntStateOf(0) }
 
-    val capacityProducer = remember { CartesianChartModelProducer() }
-    val currentProducer = remember { CartesianChartModelProducer() }
+    // Bumped when the user resets the history: a fresh producer has no
+    // model, so the charts blank out immediately instead of keeping the
+    // pre-reset curve until the next sample arrives.
+    var historyGeneration by remember { mutableIntStateOf(0) }
+    val capacityProducer = remember(historyGeneration) { CartesianChartModelProducer() }
+    val currentProducer = remember(historyGeneration) { CartesianChartModelProducer() }
     var historyPoints by remember { mutableStateOf(0) }
+
+    val scope = rememberCoroutineScope()
+    var showResetConfirm by remember { mutableStateOf(false) }
 
     // Live polling (request-id correlated; legacy daemons degrade gracefully).
     LaunchedEffect(Unit) {
@@ -476,10 +488,54 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+
+                    // Destructive: wipes every stored sample so the graphs
+                    // restart from scratch (samples resume within a minute).
+                    TextButton(onClick = { showResetConfirm = true }) {
+                        Text(
+                            text = stringResource(strings.batt_reset_history),
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
             }
         }
 
         Spacer(modifier = Modifier.padding(vertical = 16.dp))
+    }
+
+    if (showResetConfirm) {
+        AlertDialog(
+            onDismissRequest = { showResetConfirm = false },
+            title = { Text(stringResource(strings.batt_reset_confirm_title)) },
+            text = { Text(stringResource(strings.batt_reset_confirm_text)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showResetConfirm = false
+                    val dao = TaskManager.getBatteryDatabase(context).batterySampleDao()
+                    scope.launch {
+                        withContext(Dispatchers.IO) { dao.clearAll() }
+                        sampleCount = 0
+                        historyPoints = 0
+                        historyGeneration++
+                        Toast.makeText(
+                            context,
+                            strings.batt_reset_done.getString(),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }) {
+                    Text(
+                        text = stringResource(strings.batt_reset_history),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetConfirm = false }) {
+                    Text(stringResource(strings.cancel))
+                }
+            },
+        )
     }
 }

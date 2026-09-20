@@ -184,6 +184,14 @@ fun Processes(
                 })
 
                 SettingsToggle(default = false, showSwitch = false, startWidget = {
+                    RadioButton(selected = sortBy == ProcessViewModel.Sortby.CpuAvg.id, onClick = {
+                        viewModel.setSortBy(ProcessViewModel.Sortby.CpuAvg)
+                    })
+                }, label = stringResource(strings.sort_by_cpu_avg), description = stringResource(strings.sort_by_cpu_avg_desc), sideEffect = {
+                    viewModel.setSortBy(ProcessViewModel.Sortby.CpuAvg)
+                })
+
+                SettingsToggle(default = false, showSwitch = false, startWidget = {
                     RadioButton(selected = sortBy == ProcessViewModel.Sortby.A_z.id, onClick = {
                         viewModel.setSortBy(ProcessViewModel.Sortby.A_z)
                     })
@@ -361,7 +369,9 @@ fun ProcessItem(
 
                 Spacer(modifier = Modifier.width(6.dp))
 
-                // CPU Section
+                // CPU Section — instantaneous usage is ALWAYS shown (the
+                // user asked for "cpu% NOW" on every row); the cumulative
+                // CPU-time chip is added by the "Show CPU time" toggle.
                 Row(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -374,13 +384,52 @@ fun ProcessItem(
                     Spacer(modifier = Modifier.width(2.dp))
 
                     Text(
-                        text = if (Settings.showCpuTime) {
-                            formatCpuTicks(uiProc.proc.cpuTimeTicks)
-                        } else {
-                            String.format(Locale.ENGLISH, "%.1f", uiProc.proc.cpuUsage) + "%"
-                        },
+                        text = String.format(Locale.ENGLISH, "%.1f", uiProc.proc.cpuUsage) + "%",
                         style = MaterialTheme.typography.bodySmall
                     )
+                }
+
+                if (Settings.showCpuTime && uiProc.proc.cpuTimeTicks > 0L) {
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.cpu_24px),
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+
+                        Spacer(modifier = Modifier.width(2.dp))
+
+                        Text(
+                            text = formatCpuTicks(uiProc.proc.cpuTimeTicks),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+
+                // Lifetime-average load (cpu ticks / time alive) — stable
+                // long-term counterpart to the spiky instantaneous value.
+                if (uiProc.proc.avgCpuPercent >= 0f) {
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.speed_24px),
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+
+                        Spacer(modifier = Modifier.width(2.dp))
+
+                        Text(
+                            text = stringResource(
+                                strings.avg_cpu_short,
+                                String.format(Locale.ENGLISH, "%.1f", uiProc.proc.avgCpuPercent)
+                            ),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
             }
 
@@ -448,15 +497,15 @@ fun ProcessItem(
 
     if (showKillDialog != null) {
         val target = showKillDialog
-        // Fork policy: system apps ALWAYS get a confirmation, regardless of
-        // the default kill action. Normal apps are confirmed only in ASK
-        // mode — an explicit default action is the user's confirmation.
+        // Kill policy (fork14): "Confirm stop" is the MASTER switch for the
+        // confirmation dialog, decoupled from the default action — previously
+        // the dialog only appeared in Ask mode, so the toggle looked dead.
+        // With it on, the dialog offers the configured default action (Ask
+        // mode offers the full Terminate/Force chooser). With it off, the
+        // default action runs immediately (Ask resolves to Terminate).
+        // System apps ALWAYS confirm, toggle or not.
         val alwaysAsk = target?.isSystemApp == true
-        if (alwaysAsk || (
-                KillAction.fromId(Settings.defaultKillAction) == KillAction.ASK &&
-                    Settings.confirmkill
-                )
-        ) {
+        if (alwaysAsk || Settings.confirmkill) {
             KillConfirmDialog(
                 processName = target?.name ?: "",
                 forceAsk = alwaysAsk,

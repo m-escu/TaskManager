@@ -16,6 +16,7 @@ import com.rk.taskmanager.daemon.graphUpdater
 import com.rk.taskmanager.daemon.isConnected
 import com.rk.taskmanager.daemon.startDaemon
 import com.rk.taskmanager.screens.gpu.GpuViewModel
+import com.rk.taskmanager.widget.WidgetLiveService
 import com.rk.commons.settings.Settings
 import com.rk.taskmanager.settings.SettingsRoutes
 import kotlinx.coroutines.CoroutineScope
@@ -63,6 +64,23 @@ class MainActivity : ComponentActivity() {
             android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
             notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        // Restore the permanent notification on app launch. Toggling the
+        // setting starts/stops the service itself, but nothing used to bring
+        // it back when the process died or the app was merely reopened — the
+        // notification only appeared after re-toggling the setting. The
+        // start is idempotent (ensureLoop guards the collector), and the
+        // pref is the single source of truth. Foreground start from an
+        // activity is always allowed.
+        if (Settings.permanentNotification) {
+            runCatching {
+                androidx.core.content.ContextCompat.startForegroundService(
+                    this,
+                    android.content.Intent(this, WidgetLiveService::class.java)
+                        .setAction(WidgetLiveService.ACTION_START_NOTIF)
+                )
+            }
         }
 
 

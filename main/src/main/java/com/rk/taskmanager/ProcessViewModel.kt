@@ -1,5 +1,6 @@
 package com.rk.taskmanager
 
+import android.os.SystemClock
 import android.util.Log
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
@@ -13,6 +14,7 @@ import com.rk.taskmanager.screens.getApkNameFromPackage
 import com.rk.taskmanager.screens.getAppIconBitmap
 import com.rk.taskmanager.screens.isAppInstalled
 import com.rk.taskmanager.screens.isSystemApp
+import com.rk.taskmanager.screens.sysconf
 import com.rk.commons.settings.Settings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -54,7 +56,7 @@ class ProcessViewModel : ViewModel() {
 
     enum class Sortby(val id: Int){
         //edit default value in settings.kt of 0
-        Ram(0),Cpu(1),A_z(2),Tree(3),CpuTime(4)
+        Ram(0),Cpu(1),A_z(2),Tree(3),CpuTime(4),CpuAvg(5)
     }
     private val _sortBy = MutableStateFlow(Settings.sortby)
 
@@ -96,6 +98,8 @@ class ProcessViewModel : ViewModel() {
             Sortby.Ram.id -> filtered.sortedByDescending { it.proc.memoryUsageKb }
             Sortby.Cpu.id -> filtered.sortedByDescending { it.proc.cpuUsage }
             Sortby.CpuTime.id -> filtered.sortedByDescending { it.proc.cpuTimeTicks }
+            // Lifetime-average load; unknown (-1f) sinks below every known value.
+            Sortby.CpuAvg.id -> filtered.sortedByDescending { it.proc.avgCpuPercent }
             Sortby.A_z.id -> filtered.sortedBy { it.name.lowercase() }
             Sortby.Tree.id -> {
                 val (ordered, depths) = buildTree(filtered)
@@ -224,6 +228,13 @@ class ProcessViewModel : ViewModel() {
         val executablePath: String,
         /** Raw utime+stime in clock ticks; requires the proc_cpu_time daemon cap. */
         val cpuTimeTicks: Long = 0L,
+        /**
+         * Lifetime-average CPU load: cpuTimeTicks relative to the process's
+         * whole lifetime (ticks since boot minus its /proc starttime), in
+         * percent. Can exceed 100 on multi-core devices (per-core time
+         * accumulates). -1 = unknown (no proc_cpu_time cap or no starttime).
+         */
+        val avgCpuPercent: Float = -1f,
     )
 
     private val appInfoCache = ConcurrentHashMap<String, AppInfoCache>()
@@ -248,10 +259,24 @@ class ProcessViewModel : ViewModel() {
                         val myPkg = context.packageName
                         val pinnedSet = Settings.pinnedProcesses
 
+                        // Lifetime-average CPU% needs the boot-relative tick
+                        // counter on the same scale as /proc starttime.
+                        val clkTck = runCatching { sysconf() }.getOrDefault(100L)
+                        val uptimeTicks = SystemClock.elapsedRealtime() / 1000.0 * clkTck
+
                         for (i in 0 until jsonArray.length()) {
                             val obj = jsonArray.getJSONObject(i)
                             val cmdLine = obj.optString("cmdLine", "")
                             if (cmdLine == myPkg) continue
+
+                            val cpuTimeTicks = obj.optLong("cpuTimeTicks", 0L)
+                            val startTimeTicks = obj.optLong("startTime", 0L)
+                            val aliveTicks = uptimeTicks - startTimeTicks
+                            val avgCpu = if (cpuTimeTicks > 0 && startTimeTicks > 0 && aliveTicks > 0) {
+                                (cpuTimeTicks * 100.0 / aliveTicks).toFloat()
+                            } else {
+                                -1f
+                            }
 
                             newProcesses.add(
                                 Process(
@@ -266,13 +291,14 @@ class ProcessViewModel : ViewModel() {
                                     cmdLine = cmdLine,
                                     state = obj.optString("state", ""),
                                     threads = obj.optInt("threads", 0).also { totalThreads += it },
-                                    startTime = obj.optLong("startTime", 0L),
+                                    startTime = startTimeTicks,
                                     elapsedTime = obj.optDouble("elapsedTime", 0.0).toFloat(),
                                     residentSetSizeKb = obj.optLong("residentSetSizeKb", 0L),
                                     virtualMemoryKb = obj.optLong("virtualMemoryKb", 0L),
                                     cgroup = obj.optString("cgroup", ""),
                                     executablePath = obj.optString("executablePath", ""),
-                                    cpuTimeTicks = obj.optLong("cpuTimeTicks", 0L)
+                                    cpuTimeTicks = cpuTimeTicks,
+                                    avgCpuPercent = avgCpu
                                 )
                             )
                         }

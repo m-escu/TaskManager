@@ -71,7 +71,8 @@
 
     <!-- Kill behavior -->
     <string name="kill_action">Varsayılan sonlandırma eylemi</string>
-    <string name="kill_action_desc">Sonlandır düğmesi süreçleri nasıl durdurur</string>
+    <string name="kill_action_desc">Anında durdurmalarda kullanılır ve onay iletişim kutusunda eylem olarak sunulur</string>
+    <string name="confirm_stop_desc">Bir işlemi durdurmadan önce onay iletişim kutusu gösterir; varsayılan durdurma eylemini sunar (Sor seçiliyken seçim sunar). Sistem uygulamaları her zaman onay ister.</string>
     <string name="kill_action_ask">Her seferinde sor</string>
     <string name="kill_action_terminate">Sonlandır</string>
     <string name="kill_action_terminate_desc">Önce SIGTERM, bekleme süresinden sonra zorla sonlandır</string>
@@ -93,12 +94,17 @@
     <string name="legacy_daemon_msg">Çalışan daemon eski bir protokol kullanıyor (v%1$d). Bazı özellikler kullanılamaz. Güncellemek için uygulamayı tamamen kapatıp daemonı yeniden başlatın.</string>
 
     <string name="show_cpu_time">CPU süresini göster</string>
-    <string name="show_cpu_time_desc">İşlem satırları anlık yüzde yerine birikimli işlemci süresini gösterir</string>
+    <string name="show_cpu_time_desc">İşlem satırları anlık yüzdeye ek olarak toplam işlemci süresini gösterir</string>
     <string name="cpu_time">CPU süresi</string>
     <string name="sort_by_tree">İşlem ağacı</string>
     <string name="sort_by_tree_desc">Alt işlemler ebeveynlerinin altında listelenir</string>
     <string name="sort_by_cpu_time">CPU süresi</string>
     <string name="sort_by_cpu_time_desc">İşlemin başlamasından bu yana kullandığı toplam CPU süresi</string>
+    <string name="sort_by_cpu_avg_desc">İşlemin tüm ömrü boyunca ortalaması alınmış CPU yükü</string>
+    <string name="sort_by_cpu_avg">Ortalama CPU</string>
+    <string name="avg_cpu_short">ort. %1$s%%</string>
+    <string name="avg_cpu_since_start">başlangıçtan beri</string>
+    <string name="avg_cpu_usage">Ortalama CPU kullanımı</string>
     <string name="pss_details">Bellek ayrıntıları (PSS)</string>
     <string name="pss_total">Orantılı bellek boyutu (PSS)</string>
     <string name="pss_anon">PSS anonim bellek</string>
@@ -127,6 +133,10 @@
     <string name="batt_recording">Geçmiş kaydı</string>
     <string name="batt_recording_desc">Bu ekran açıkken her dakika bir örnek kaydedilir. Geçmiş 30 gün tutulur ve cihazdan çıkmaz.</string>
     <string name="batt_samples_stored">Kaydedilen örnek: %1$d</string>
+    <string name="batt_reset_done">Pil geçmişi temizlendi</string>
+    <string name="batt_reset_confirm_text">Kayıtlı tüm pil örnekleri kalıcı olarak silinecek.</string>
+    <string name="batt_reset_confirm_title">Pil grafikleri sıfırlansın mı?</string>
+    <string name="batt_reset_history">Grafik verilerini sıfırla</string>
     <string name="net_live_rates">Canlı hızlar</string>
     <string name="net_download">İndirme</string>
     <string name="net_upload">Yükleme</string>
@@ -194,5 +204,7 @@
     <string name="color_reset_hint">Varsay\u0131lan rengine d\u00f6nmek i\u00e7in bo\u015f b\u0131rak\u0131n.</string>
     <string name="permanent_notification">Kal\u0131c\u0131 bildirim</string>
     <string name="permanent_notification_desc">Canl\u0131 izleyici bildirimini QS kutusu olmadan, uygulaman\u0131n kendisi taraf\u0131ndan a\u00e7\u0131k tutar. Yeniden ba\u015flatmalarda s\u00fcrer. Kapatmak, canl\u0131 bir oturum etkin de\u011filse servisi durdurur.</string>
+    <string name="start_at_boot_desc">Cihaz yeniden başladığında kalıcı bildirimi geri yükle</string>
+    <string name="start_at_boot">Açılışta başlat</string>
 
 </resources>
