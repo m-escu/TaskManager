@@ -26,7 +26,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.core.cartesian.data.lineSeries
+import com.rk.commons.charts.ChartConfig
 import com.rk.commons.charts.UsageChart
 import com.rk.commons.getString
 import com.rk.commons.settings.Settings
@@ -43,6 +45,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
 
@@ -152,22 +158,26 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
     // be empty.") when a transaction contains an empty series — which is
     // exactly the state of a fresh database, so empty results are skipped
     // and the transactions are additionally guarded below.
+    // X values are epoch MINUTES so the curve is plotted on real time: the
+    // right edge is always the latest sample (recorded immediately on entry
+    // and every minute after), and old samples sit at their true position.
     LaunchedEffect(periodDays, sampleCount) {
         val dao = TaskManager.getBatteryDatabase(context).batterySampleDao()
         val since = System.currentTimeMillis() - periodDays * 24L * 3600 * 1000
         val samples = withContext(Dispatchers.IO) { dao.since(since) }
         historyPoints = samples.size
         if (samples.isEmpty()) return@LaunchedEffect
+        val xs = samples.map { it.timestamp / 60000.0 }
         runCatching {
             capacityProducer.runTransaction {
                 lineSeries {
-                    series(x = samples.indices.toList(), y = samples.map { it.capacity })
+                    series(x = xs, y = samples.map { it.capacity })
                 }
             }
             currentProducer.runTransaction {
                 lineSeries {
                     series(
-                        x = samples.indices.toList(),
+                        x = xs,
                         // -1 means "unknown" — plot 0 instead of |−1| mA.
                         y = samples.map {
                             if (it.currentUA < 0) 0f else abs(it.currentUA / 1000f)
@@ -176,6 +186,20 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
                 }
             }
         }.onFailure { Log.e(TAG, "chart seeding failed", it) }
+    }
+
+    // Bottom-axis labels: clock time for the 24h view, day for 7d/30d.
+    val timeAxisFormatter = remember(periodDays) {
+        CartesianValueFormatter { _, value, _ ->
+            val dt = LocalDateTime.ofInstant(
+                Instant.ofEpochMinute(value.toLong()),
+                ZoneId.systemDefault(),
+            )
+            dt.format(
+                if (periodDays == 1) DateTimeFormatter.ofPattern("HH:mm")
+                else DateTimeFormatter.ofPattern("d/M")
+            )
+        }
     }
 
     Column(modifier.verticalScroll(rememberScrollState())) {
@@ -190,7 +214,8 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
         UsageChart(
             modelProducer = capacityProducer,
             lineColors = listOf(MaterialTheme.colorScheme.primary),
-            modifier = modifier.fillMaxWidth()
+            modifier = modifier.fillMaxWidth(),
+            bottomAxisFormatter = timeAxisFormatter,
         )
 
         Row(
@@ -236,7 +261,11 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
             UsageChart(
                 modelProducer = currentProducer,
                 lineColors = listOf(MaterialTheme.colorScheme.tertiary),
-                modifier = modifier.fillMaxWidth()
+                modifier = modifier.fillMaxWidth(),
+                rangeProvider = ChartConfig.AutoRangeProvider,
+                valueFormatter = ChartConfig.PlainStartAxisValueFormatter,
+                markerValueFormatter = ChartConfig.PlainMarkerValueFormatter,
+                bottomAxisFormatter = timeAxisFormatter,
             )
         }
 

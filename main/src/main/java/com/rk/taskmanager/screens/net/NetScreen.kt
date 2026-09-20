@@ -6,6 +6,7 @@ import android.app.usage.NetworkStatsManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Drawable
+import android.net.ConnectivityManager
 import android.provider.Settings as AndroidSettings
 import android.util.Log
 import android.widget.Toast
@@ -45,6 +46,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
+import com.rk.commons.charts.ChartConfig
 import com.rk.commons.charts.GraphDataHandler
 import com.rk.commons.charts.UsageChart
 import com.rk.commons.getString
@@ -71,7 +73,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import org.json.JSONObject
 import java.io.File
-import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 val netGraphHandler = GraphDataHandler(seriesCount = 2)
@@ -227,106 +228,54 @@ suspend fun queryPerAppUsage(
     val perUid = HashMap<Int, LongArray>(256)
     val diag = StringBuilder()
 
-    // NetworkTemplate is not part of the public SDK stubs on any compile
-    // version, so templates + querySummary are invoked reflectively. The
-    // public querySummary signature is (NetworkTemplate, String subscriberId,
-    // long, long) — null subscriberId = "all subscriptions", which is what
-    // usage access permits. Every transport is resolved and queried
-    // INDEPENDENTLY: a missing builder for one transport (e.g. the no-arg
-    // buildTemplateMobile() does not exist on S+) must never abort the others.
-    try {
-        val templateClass = Class.forName("android.net.NetworkTemplate")
-        val querySummary = nsm.javaClass.getMethod(
-            "querySummary",
-            templateClass,
-            String::class.java,
-            Long::class.javaPrimitiveType,
-            Long::class.javaPrimitiveType,
-        )
-        val templates = buildNetTemplates(templateClass)
-        diag.append("templates=").append(templates.size)
-        if (templates.isEmpty()) diag.append(" (reflection blocked?)")
-        for ((label, template) in templates) {
-            var stats: NetworkStats? = null
+    // The int-type querySummary (public API since 23, still present on
+    // current builds) builds the matching NetworkTemplate INSIDE the
+    // framework, so no reflection is needed at all. The NetworkTemplate
+    // overloads are @SystemApi(MODULE_LIBRARIES) since T — reflection-blocked
+    // for regular apps — which is exactly the NoSuchMethodException the
+    // diagnostic line used to report. subscriberId = null means "all
+    // networks" of that type (documented behaviour, allowed with usage
+    // access). Each transport is queried independently.
+    val transports = listOf(
+        "wifi" to ConnectivityManager.TYPE_WIFI,
+        "mobile" to ConnectivityManager.TYPE_MOBILE,
+        "ethernet" to ConnectivityManager.TYPE_ETHERNET,
+    )
+    diag.append("types=").append(transports.size)
+    for ((label, type) in transports) {
+        var stats: NetworkStats? = null
+        try {
+            stats = nsm.querySummary(type, null, sinceMs, end)
+            if (stats == null) {
+                diag.append("; ").append(label).append(":null")
+                continue
+            }
+            val bucket = NetworkStats.Bucket()
+            var buckets = 0
+            while (stats.hasNextBucket()) {
+                stats.getNextBucket(bucket)
+                buckets++
+                if (bucket.rxBytes <= 0 && bucket.txBytes <= 0) continue
+                val agg = perUid.getOrPut(bucket.uid) { LongArray(2) }
+                agg[0] += bucket.rxBytes
+                agg[1] += bucket.txBytes
+            }
+            diag.append("; ").append(label).append(":").append(buckets).append("b")
+            Log.i(TAG, "per-app $label: $buckets buckets, ${perUid.size} uids cumulative")
+        } catch (e: Exception) {
+            // This transport may not exist on the device — the others still count.
+            diag.append("; ").append(label).append(":err(").append(e.javaClass.simpleName).append(")")
+            Log.w(TAG, "per-app $label failed: $e")
+        } finally {
             try {
-                stats = querySummary.invoke(nsm, template, null, sinceMs, end) as NetworkStats
-                val bucket = NetworkStats.Bucket()
-                var buckets = 0
-                while (stats.hasNextBucket()) {
-                    stats.getNextBucket(bucket)
-                    buckets++
-                    if (bucket.rxBytes <= 0 && bucket.txBytes <= 0) continue
-                    val agg = perUid.getOrPut(bucket.uid) { LongArray(2) }
-                    agg[0] += bucket.rxBytes
-                    agg[1] += bucket.txBytes
-                }
-                diag.append("; ").append(label).append(":").append(buckets).append("b")
-                Log.i(TAG, "per-app $label: $buckets buckets, ${perUid.size} uids cumulative")
-            } catch (e: Exception) {
-                // This transport may not exist on the device — the others still count.
-                diag.append("; ").append(label).append(":err(").append(e.javaClass.simpleName).append(")")
-                Log.w(TAG, "per-app $label failed: $e")
-            } finally {
-                try {
-                    stats?.close()
-                } catch (_: Exception) {
-                }
+                stats?.close()
+            } catch (_: Exception) {
             }
         }
-    } catch (e: Exception) {
-        // Network accounting unavailable on this build.
-        diag.append("; fatal(").append(e.javaClass.simpleName).append(")")
-        Log.w(TAG, "network accounting unavailable: $e")
     }
     lastPerAppDiag = diag.toString().take(240)
     Log.i(TAG, "per-app query done: ${perUid.size} uids | $lastPerAppDiag")
     perUid
-}
-
-/**
- * Builds one template per transport, avoiding double counting:
- *  - API 33+: the (hidden) [NetworkTemplate.Builder] with the public
- *    TEMPLATE_* constants — the forward-compatible path;
- *  - older builds: the legacy no-arg static factories, each optional so a
- *    missing one (e.g. buildTemplateMobileWildcard only exists since S)
- *    degrades to "this transport is skipped" instead of "no data at all".
- */
-private fun buildNetTemplates(templateClass: Class<*>): List<Pair<String, Any>> {
-    val out = mutableListOf<Pair<String, Any>>()
-
-    // Strategy A — Builder(int) + TEMPLATE_* constants (API 33+).
-    try {
-        val builderClass = Class.forName("android.net.NetworkTemplate\$Builder")
-        val ctor = builderClass.getConstructor(Int::class.javaPrimitiveType)
-        val build = builderClass.getMethod("build")
-        for (constName in listOf("TEMPLATE_WIFI", "TEMPLATE_ETHERNET", "TEMPLATE_MOBILE", "TEMPLATE_CARRIER")) {
-            try {
-                val const = templateClass.getField(constName).getInt(null)
-                val label = constName.removePrefix("TEMPLATE_").lowercase(Locale.US)
-                out += label to build.invoke(ctor.newInstance(const))
-            } catch (_: Exception) {
-            }
-        }
-    } catch (_: Exception) {
-    }
-
-    // Strategy B — legacy no-arg static factories (pre-33 fallback).
-    if (out.isEmpty()) {
-        for (name in listOf("buildTemplateWifi", "buildTemplateEthernet", "buildTemplateMobileWildcard")) {
-            try {
-                val label = name.removePrefix("buildTemplate").lowercase(Locale.US)
-                out += label to templateClass.getMethod(name).invoke(null)
-            } catch (_: Exception) {
-            }
-        }
-        // Ancient builds: buildTemplateMobile(null) == mobile wildcard.
-        try {
-            val m = templateClass.getMethod("buildTemplateMobile", String::class.java)
-            out += "mobile" to m.invoke(null, *arrayOf<Any?>(null))
-        } catch (_: Exception) {
-        }
-    }
-    return out
 }
 
 private fun toAppUsages(
@@ -440,7 +389,12 @@ fun NetScreen(modifier: Modifier = Modifier) {
                 MaterialTheme.colorScheme.primary,
                 MaterialTheme.colorScheme.tertiary,
             ),
-            modifier = modifier.fillMaxWidth()
+            modifier = modifier.fillMaxWidth(),
+            // Rates are KB/s values, not percentages — dynamic range,
+            // plain labels (the shared default would clip above 100).
+            rangeProvider = ChartConfig.AutoRangeProvider,
+            valueFormatter = ChartConfig.PlainStartAxisValueFormatter,
+            markerValueFormatter = ChartConfig.PlainMarkerValueFormatter,
         )
 
         Column(

@@ -35,6 +35,7 @@ fun UsageChart(
     rangeProvider: CartesianLayerRangeProvider = ChartConfig.RangeProvider,
     valueFormatter: CartesianValueFormatter = ChartConfig.StartAxisValueFormatter,
     markerValueFormatter: DefaultCartesianMarker.ValueFormatter = ChartConfig.MarkerValueFormatter,
+    bottomAxisFormatter: CartesianValueFormatter? = null,
 ) {
     CartesianChartHost(
         rememberCartesianChart(
@@ -75,6 +76,20 @@ fun UsageChart(
                 tick = null,
                 line = null,
             ),
+            bottomAxis = bottomAxisFormatter?.let { formatter ->
+                HorizontalAxis.rememberBottom(
+                    valueFormatter = formatter,
+                    label = TextComponent(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.toArgb(),
+                        textSizeSp = 8f,
+                        lineCount = 1,
+                        typeface = Typeface.DEFAULT
+                    ),
+                    tick = null,
+                    line = null,
+                    guideline = null,
+                )
+            },
             marker = rememberChartMarker(markerValueFormatter),
         ),
         modelProducer,
