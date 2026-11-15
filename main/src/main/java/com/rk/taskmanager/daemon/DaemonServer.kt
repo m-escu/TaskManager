@@ -30,7 +30,11 @@ import org.json.JSONException
 import org.json.JSONObject
 
 val daemon_messages = DaemonServer.received_messages.asSharedFlow()
-val send_daemon_messages = MutableSharedFlow<String>(extraBufferCapacity = 10, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+// SUSPEND, not DROP_OLDEST: with the widget, graphs and process list all
+// polling, a 10-slot drop-oldest queue silently discarded requests, which
+// then surfaced as 3-5 s request() timeouts. All producers use emit(); with
+// no writer collecting (disconnected) emit returns immediately anyway.
+val send_daemon_messages = MutableSharedFlow<String>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.SUSPEND)
 var isConnected by mutableStateOf(false)
     private set
 
@@ -52,12 +56,24 @@ var daemonProtocolVersion: Int by mutableIntStateOf(0)
 var daemonVersionString: String by mutableStateOf("")
     private set
 
+/** Orphaned sibling daemons the connected daemon killed on startup (HELLO "reaped"). */
+var daemonReapedCount: Int by mutableIntStateOf(0)
+    private set
+
 object DaemonServer {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    // Push frames (4 topics per tick) plus process lists share this flow;
+    // the reader cannot suspend (tryEmit), so give consumers some slack.
     val received_messages =
-        MutableSharedFlow<String>(extraBufferCapacity = 10, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+        MutableSharedFlow<String>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+    /** Increments on every successful handshake, so per-connection state
+     *  (e.g. a push subscription) can tell a reconnect from the same link. */
+    @Volatile
+    var connectionId: Long = 0L
+        private set
 
     private var readerJob: Job? = null
     private var writerJob: Job? = null
@@ -136,6 +152,8 @@ object DaemonServer {
         daemonProtocolVersion = proto
         daemonVersionString = hello.optString("version", "unknown")
         daemonCaps = parseCaps(hello)
+        daemonReapedCount = hello.optInt("reaped", 0)
+        connectionId++
 
         log("Daemon v$daemonVersionString | protocol v$proto | caps: $daemonCaps")
         isConnected = true

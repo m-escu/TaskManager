@@ -15,6 +15,7 @@ import com.rk.components.compose.preferences.base.PreferenceLayout
 import com.rk.components.compose.preferences.base.PreferenceTemplate
 import com.rk.taskmanager.daemon.daemonCaps
 import com.rk.taskmanager.daemon.daemonProtocolVersion
+import com.rk.taskmanager.daemon.daemonReapedCount
 import com.rk.taskmanager.daemon.daemonVersionString
 import com.rk.taskmanager.daemon.isConnected
 import com.rk.commons.getString
@@ -51,6 +52,19 @@ fun DaemonSettings(modifier: Modifier = Modifier) {
                     title = { Text(text = stringResource(strings.daemon_protocol), style = MaterialTheme.typography.titleMedium) },
                     description = { Text(text = "v$daemonProtocolVersion", style = MaterialTheme.typography.titleSmall) },
                 )
+                // Watchdog: leaked daemons killed by this one at startup. A
+                // non-zero value means an earlier connection leaked a process.
+                if (daemonCaps.contains("reaper")) {
+                    PreferenceTemplate(
+                        title = { Text(text = stringResource(strings.daemon_reaped), style = MaterialTheme.typography.titleMedium) },
+                        description = {
+                            Text(
+                                text = stringResource(strings.daemon_reaped_desc, daemonReapedCount),
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                        },
+                    )
+                }
                 if (daemonCaps.isNotEmpty()) {
                     PreferenceTemplate(
                         title = { Text(text = stringResource(strings.daemon_caps), style = MaterialTheme.typography.titleMedium) },

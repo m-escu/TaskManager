@@ -159,6 +159,21 @@ object DaemonClient {
             timeoutMs,
         )
 
+    /** SIGSTOP ([freeze] true) or SIGCONT a pid (`FREEZE` / `THAW`, cap "freeze"). */
+    suspend fun freeze(pid: Int, freeze: Boolean, timeoutMs: Long = 3_000): Boolean =
+        DaemonServer.request(
+            JSONObject().put("cmd", if (freeze) "FREEZE" else "THAW").put("pid", pid),
+            timeoutMs,
+        )?.optBoolean("success", false) ?: false
+
+    /**
+     * Per-uid battery use since the last full charge (`APP_POWER`, cap
+     * "app_power"): estimated mAh and partial-wakelock time. The daemon runs
+     * `dumpsys batterystats --checkin`, which can take a few seconds.
+     */
+    suspend fun appPower(timeoutMs: Long = 20_000): JSONObject? =
+        DaemonServer.request(JSONObject().put("cmd", "APP_POWER"), timeoutMs)
+
     /** Stops push-mode frames (`UNSUBSCRIBE`). */
     suspend fun unsubscribe(timeoutMs: Long = 3_000): JSONObject? =
         DaemonServer.request(JSONObject().put("cmd", "UNSUBSCRIBE"), timeoutMs)

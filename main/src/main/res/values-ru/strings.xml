@@ -378,4 +378,22 @@
     <string name="units_desc">Единицы измерения, используемые в приложении</string>
     <string name="usage_notif">Уведомление об использовании</string>
     <string name="usage_notif_Desc">Показывать уведомление для просмотра использования ресурсов в фоне</string>
+    <!-- round2: push hub, freeze, app power, CSV, watchdog, current unit -->
+    <string name="battery_current_auto">Авто</string>
+    <string name="battery_current_auto_desc">Определять единицу по величине значения (малые значения считаются мА)</string>
+    <string name="core_capped">лимит %1$d%%</string>
+    <string name="freeze">Заморозить</string>
+    <string name="thaw">Заморожен — нажмите, чтобы продолжить</string>
+    <string name="freeze_desc">Приостановить процесс (SIGSTOP), не завершая его</string>
+    <string name="freeze_desc_app">Приостановить процесс (SIGSTOP). Замороженное приложение может показать «не отвечает» при открытии</string>
+    <string name="freeze_failed">Не удалось изменить состояние процесса</string>
+    <string name="batt_app_power">Расход батареи по приложениям</string>
+    <string name="batt_app_power_desc">Оценка мА·ч и времени wakelock с последней полной зарядки (из batterystats)</string>
+    <string name="batt_app_power_unavailable">Статистика батареи сейчас недоступна</string>
+    <string name="batt_app_power_empty">С последней полной зарядки расход не зафиксирован</string>
+    <string name="batt_export_csv">Экспорт в CSV</string>
+    <string name="batt_export_done">Экспортировано записей: %1$d</string>
+    <string name="batt_export_failed">Не удалось экспортировать</string>
+    <string name="daemon_reaped">Сторож</string>
+    <string name="daemon_reaped_desc">Зависших демонов очищено при запуске: %1$d</string>
 </resources>

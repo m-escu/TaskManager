@@ -388,4 +388,22 @@
     <string name="units_desc">应用中使用的度量单位</string>
     <string name="usage_notif">用量通知</string>
     <string name="usage_notif_Desc">显示一条通知，以便在后台查看资源用量</string>
+    <!-- round2: push hub, freeze, app power, CSV, watchdog, current unit -->
+    <string name="battery_current_auto">自动</string>
+    <string name="battery_current_auto_desc">根据读数大小推断单位（较小的数值按毫安处理）</string>
+    <string name="core_capped">限频 %1$d%%</string>
+    <string name="freeze">冻结</string>
+    <string name="thaw">已冻结 — 点按以恢复</string>
+    <string name="freeze_desc">暂停进程（SIGSTOP）而不结束它</string>
+    <string name="freeze_desc_app">暂停进程（SIGSTOP）。打开已冻结的应用时可能会显示“无响应”</string>
+    <string name="freeze_failed">无法更改进程状态</string>
+    <string name="batt_app_power">各应用耗电</string>
+    <string name="batt_app_power_desc">自上次充满电以来的估算毫安时和唤醒锁时长（来自 batterystats）</string>
+    <string name="batt_app_power_unavailable">暂时无法获取电池统计信息</string>
+    <string name="batt_app_power_empty">自上次充满电以来没有耗电记录</string>
+    <string name="batt_export_csv">导出 CSV</string>
+    <string name="batt_export_done">已导出 %1$d 条记录</string>
+    <string name="batt_export_failed">导出失败</string>
+    <string name="daemon_reaped">看门狗</string>
+    <string name="daemon_reaped_desc">启动时清理的残留守护进程：%1$d</string>
 </resources>

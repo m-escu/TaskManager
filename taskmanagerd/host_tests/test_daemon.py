@@ -95,6 +95,10 @@ def main():
           and "push_subscribe" in hello["caps"] and "kill_graceful" in hello["caps"],
           str(hello))
     check("hello_version", bool(hello.get("version")), str(hello))
+    check("hello_reaped", isinstance(hello.get("reaped"), int), str(hello))
+    check("hello_new_caps",
+          all(c in hello.get("caps", []) for c in ("freeze", "app_power", "reaper", "current_raw")),
+          str(hello))
 
     # --- 2. PING echoes request id ----------------------------------------
     r = d.request({"cmd": "PING", "id": 42})
@@ -287,6 +291,36 @@ def main():
     # --- 20. SUBSCRIBE rejects unknown topics ---------------------------------
     r = d.request({"cmd": "SUBSCRIBE", "topics": ["marsquakes"], "id": 52})
     check("subscribe_validates", r.get("type") == "ERROR", str(r))
+
+    # --- 20b. FREEZE / THAW stop and resume a child -------------------------
+    sleeper = subprocess.Popen(["sleep", "30"])
+    time.sleep(0.2)
+    r = d.request({"cmd": "FREEZE", "pid": sleeper.pid, "id": 60})
+    time.sleep(0.2)
+    with open(f"/proc/{sleeper.pid}/stat") as f:
+        st = f.read().rsplit(")", 1)[1].split()[0]
+    check("freeze", r.get("type") == "FREEZE_RESULT" and r.get("success") is True
+          and r.get("id") == 60 and st == "T", f"{r} state={st}")
+    r = d.request({"cmd": "THAW", "pid": sleeper.pid, "id": 61})
+    time.sleep(0.2)
+    with open(f"/proc/{sleeper.pid}/stat") as f:
+        st = f.read().rsplit(")", 1)[1].split()[0]
+    check("thaw", r.get("success") is True and st in ("S", "R"), f"{r} state={st}")
+    sleeper.kill()
+    sleeper.wait()
+    r = d.request({"cmd": "FREEZE", "pid": 1, "id": 62})
+    check("freeze_refuses_init", r.get("success") is False, str(r))
+
+    # --- 20c. APP_POWER answers even without dumpsys (host) ------------------
+    r = d.request({"cmd": "APP_POWER", "id": 63}, timeout=15)
+    check("app_power", r.get("type") == "APP_POWER" and isinstance(r.get("apps"), list)
+          and r.get("id") == 63, str(r)[:200])
+
+    # --- 20d. NET_PING never reports a wrapped (negative-delta) rate ---------
+    for _ in range(3):
+        r = d.request({"cmd": "NET_PING", "interface": "lo"})
+        check("net_rate_sane", 0 <= r.get("rxBytesPerSec", 0) < 1e12, str(r))
+        time.sleep(0.1)
 
     # --- 21. STOP_SELF terminates the daemon cleanly -------------------------
     d.send({"cmd": "STOP_SELF"})

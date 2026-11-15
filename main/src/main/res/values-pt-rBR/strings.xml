@@ -389,4 +389,22 @@
     <string name="units_desc">Unidades de medida usadas no aplicativo</string>
     <string name="usage_notif">Notificação de uso</string>
     <string name="usage_notif_Desc">Mostra uma notificação para ver o uso de recursos em segundo plano</string>
+    <!-- round2: push hub, freeze, app power, CSV, watchdog, current unit -->
+    <string name="battery_current_auto">Automático</string>
+    <string name="battery_current_auto_desc">Deduzir a unidade pelo tamanho da leitura (valores pequenos são tratados como mA)</string>
+    <string name="core_capped">limitado %1$d%%</string>
+    <string name="freeze">Congelar</string>
+    <string name="thaw">Congelado — toque para retomar</string>
+    <string name="freeze_desc">Pausar o processo (SIGSTOP) sem encerrá-lo</string>
+    <string name="freeze_desc_app">Pausar o processo (SIGSTOP). Um app congelado pode mostrar \"não está respondendo\" ao ser aberto</string>
+    <string name="freeze_failed">Não foi possível alterar o estado do processo</string>
+    <string name="batt_app_power">Uso da bateria por app</string>
+    <string name="batt_app_power_desc">mAh estimados e tempo de wakelock desde a última carga completa (do batterystats)</string>
+    <string name="batt_app_power_unavailable">As estatísticas da bateria não estão disponíveis agora</string>
+    <string name="batt_app_power_empty">Nenhum uso de bateria registrado desde a última carga completa</string>
+    <string name="batt_export_csv">Exportar CSV</string>
+    <string name="batt_export_done">%1$d amostras exportadas</string>
+    <string name="batt_export_failed">Falha na exportação</string>
+    <string name="daemon_reaped">Watchdog</string>
+    <string name="daemon_reaped_desc">Daemons órfãos removidos na inicialização: %1$d</string>
 </resources>
