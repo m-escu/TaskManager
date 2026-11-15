@@ -15,6 +15,7 @@ import android.provider.Settings
 import android.system.Os
 import android.system.OsConstants
 import android.widget.Toast
+import androidx.compose.runtime.key
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -334,6 +335,39 @@ fun ProcessInfo(
                             }
                         }
                     )
+
+                    // Freeze / thaw (SIGSTOP / SIGCONT via the daemon): pause a
+                    // misbehaving process without losing its state. The initial
+                    // value mirrors /proc state "T" (already stopped).
+                    if (enabled && DaemonClient.hasCap("freeze")) {
+                        val context = LocalContext.current
+                        var frozen by remember(proc.proc.pid) {
+                            mutableStateOf(proc.proc.state.trim().startsWith("T"))
+                        }
+                        var resetTick by remember { mutableIntStateOf(0) }
+                        // Re-keyed on failure so the switch snaps back to the real state.
+                        key(frozen, resetTick) {
+                            SettingsToggle(
+                                label = stringResource(if (frozen) strings.thaw else strings.freeze),
+                                description = stringResource(
+                                    if (proc.isApp) strings.freeze_desc_app else strings.freeze_desc
+                                ),
+                                default = frozen,
+                                isEnabled = true,
+                                showSwitch = true,
+                                sideEffect = { want ->
+                                    scope.launch {
+                                        if (DaemonClient.freeze(proc.proc.pid, want)) {
+                                            frozen = want
+                                        } else {
+                                            resetTick++
+                                            Toast.makeText(context, strings.freeze_failed.getString(), Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
 
                     SettingsToggle(
                         label = if (proc.isPinned.value) stringResource(strings.unpin) else stringResource(strings.pin),

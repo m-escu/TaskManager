@@ -1,5 +1,6 @@
 package com.rk.taskmanager.screens.net
 
+import com.rk.taskmanager.daemon.PushHub
 import android.app.AppOpsManager
 import android.app.usage.NetworkStats
 import android.app.usage.NetworkStatsManager
@@ -366,11 +367,21 @@ fun NetScreen(modifier: Modifier = Modifier) {
     // Live rates via request-id correlated NET_PING.
     LaunchedEffect(selectedIface) {
         if (selectedIface.isEmpty()) return@LaunchedEffect
-        while (isActive) {
-            val response = DaemonServer.request(
+        // Push "net" frames carry every interface; pick the selected one.
+        // NET_PING polling when push is unavailable.
+        PushHub.live(
+            "net",
+            pollMs = { Settings.updateFrequency.coerceIn(150, 5_000).toLong() },
+        ) {
+            DaemonServer.request(
                 JSONObject().put("cmd", "NET_PING").put("interface", selectedIface),
                 timeoutMs = 2_000,
             )
+        }.collect { raw ->
+            val response = raw?.optJSONArray("interfaces")?.let { arr ->
+                (0 until arr.length()).map { arr.getJSONObject(it) }
+                    .firstOrNull { it.optString("name") == selectedIface }
+            } ?: raw
             if (response != null && response.has("rxBytesPerSec")) {
                 downloadBps = response.optDouble("rxBytesPerSec", 0.0)
                 uploadBps = response.optDouble("txBytesPerSec", 0.0)
@@ -389,9 +400,6 @@ fun NetScreen(modifier: Modifier = Modifier) {
                         navControllerRef.get()?.currentDestination?.route == SettingsRoutes.Home.route
                 }
             }
-            // Same cadence knob as the CPU/RAM/GPU/battery live charts
-            // (Settings -> Graph -> update delay) instead of a hardcoded 1 s.
-            delay(Settings.updateFrequency.coerceIn(150, 5_000).toLong())
         }
     }
 

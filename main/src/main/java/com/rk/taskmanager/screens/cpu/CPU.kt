@@ -1,5 +1,6 @@
 package com.rk.taskmanager.screens.cpu
 
+import com.rk.taskmanager.daemon.PushHub
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -66,6 +67,8 @@ data class CoreStat(
     val usage: Int,
     val freqKHz: Long,
     val maxFreqKHz: Long,
+    /** scaling_max_freq: below [maxFreqKHz] while the policy caps the core. -1 = unknown. */
+    val limitFreqKHz: Long = -1,
 )
 
 private val _cpuUsage = MutableStateFlow(0)
@@ -113,9 +116,11 @@ fun CPU(modifier: Modifier = Modifier, viewModel: ProcessViewModel) {
 
     // Per-core usage + frequencies (requires the core_ping daemon cap; on
     // older daemons the response has no "cores" array and the card hides).
+    // Push frames ("cpu" topic carries the same cores array) while the
+    // PushHub subscription is live; CORE_PING polling otherwise.
     LaunchedEffect(Unit) {
-        while (isActive) {
-            val response = DaemonClient.cores(timeoutMs = 2_000)
+        PushHub.live("cpu", pollMs = { 2_000L }) { DaemonClient.cores(timeoutMs = 2_000) }
+            .collect { response ->
             val arr = response?.optJSONArray("cores")
             if (arr != null) {
                 cores = (0 until arr.length()).map { i ->
@@ -126,10 +131,10 @@ fun CPU(modifier: Modifier = Modifier, viewModel: ProcessViewModel) {
                         usage = obj.optInt("usage", 0),
                         freqKHz = obj.optLong("freqKHz", -1),
                         maxFreqKHz = obj.optLong("maxFreqKHz", -1),
+                        limitFreqKHz = obj.optLong("limitFreqKHz", -1),
                     )
                 }
             }
-            delay(2000)
         }
     }
 
@@ -260,9 +265,19 @@ fun CPU(modifier: Modifier = Modifier, viewModel: ProcessViewModel) {
     }
 }
 
+/**
+ * Policy ceiling as a percentage of the hardware max when the core is capped
+ * (thermal or power throttling), null when it runs uncapped or it's unknown.
+ */
+fun CoreStat.capPercent(): Int? {
+    if (!online || limitFreqKHz <= 0 || maxFreqKHz <= 0 || limitFreqKHz >= maxFreqKHz) return null
+    return ((limitFreqKHz * 100) / maxFreqKHz).toInt()
+}
+
 /** One row of the per-core card: name, usage bar, usage %, current frequency. */
 @Composable
 fun CoreRow(core: CoreStat) {
+    val capPercent = core.capPercent()
     val freqText = when {
         !core.online -> stringResource(strings.core_offline)
         core.freqKHz > 0 -> String.format(Locale.ENGLISH, "%.2f GHz", core.freqKHz / 1_000_000.0)
@@ -300,14 +315,25 @@ fun CoreRow(core: CoreStat) {
             modifier = Modifier.width(44.dp),
             maxLines = 1,
         )
-        Text(
-            text = freqText,
-            style = MaterialTheme.typography.labelMedium,
-            textAlign = TextAlign.End,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(86.dp),
-            maxLines = 1,
-        )
+        Column(horizontalAlignment = Alignment.End, modifier = Modifier.width(86.dp)) {
+            Text(
+                text = freqText,
+                style = MaterialTheme.typography.labelMedium,
+                textAlign = TextAlign.End,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+            // Thermal/power cap: the policy ceiling sits below the hardware max.
+            if (capPercent != null) {
+                Text(
+                    text = stringResource(strings.core_capped, capPercent),
+                    style = MaterialTheme.typography.labelSmall,
+                    textAlign = TextAlign.End,
+                    color = MaterialTheme.colorScheme.error,
+                    maxLines = 1,
+                )
+            }
+        }
     }
 }
 

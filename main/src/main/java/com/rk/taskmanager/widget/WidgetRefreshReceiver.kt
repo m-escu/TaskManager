@@ -85,6 +85,22 @@ object WidgetRefreshScheduler {
         }
     }
 
+    /**
+     * Arms the chain only when no alarm is pending. Application.onCreate
+     * runs on every process start (widget broadcasts, the tile, boot...);
+     * calling [schedule] there re-armed the alarm from "now" each time, so
+     * with a long interval and frequent cold starts it could never fire.
+     */
+    fun scheduleIfNotArmed(context: Context) {
+        val pending = PendingIntent.getBroadcast(
+            context,
+            0,
+            Intent(context, WidgetRefreshReceiver::class.java).setAction(ACTION_REFRESH),
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
+        )
+        if (pending == null) schedule(context)
+    }
+
     /** Drops the alarm (last widget removed). */
     fun cancel(context: Context) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return

@@ -1,5 +1,10 @@
 package com.rk.taskmanager.screens.battery
 
+import com.rk.taskmanager.daemon.isConnected
+import com.rk.taskmanager.data.BatteryCsv
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
+import com.rk.taskmanager.daemon.PushHub
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
@@ -80,6 +85,8 @@ data class BatteryLive(
 )
 
 private fun parseBattery(response: JSONObject?): BatteryLive? = response?.let { j ->
+    val currentUA = WidgetStats.resolveDaemonCurrentUA(j)
+    val voltageUV = j.optLong("voltageUV", -1)
     BatteryLive(
         known = j.has("present"),
         present = j.optBoolean("present", false),
@@ -87,9 +94,11 @@ private fun parseBattery(response: JSONObject?): BatteryLive? = response?.let { 
         status = j.optString("status", ""),
         charging = j.optBoolean("charging", false),
         health = j.optString("health", ""),
-        voltageUV = j.optLong("voltageUV", -1),
-        currentUA = j.optLong("currentUA", -1),
-        powerUW = j.optLong("powerUW", -1),
+        voltageUV = voltageUV,
+        currentUA = currentUA,
+        // Recomputed from the unit-resolved current so a manual unit
+        // override fixes the power figure too.
+        powerUW = WidgetStats.powerUW(voltageUV, currentUA),
         tempTenthsC = j.optInt("tempTenthsC", -1),
         cycleCount = j.optInt("cycleCount", -1),
         chargeFullUAh = j.optLong("chargeFullUAh", -1),
@@ -107,9 +116,9 @@ private fun JSONObject.toSample(timestamp: Long): BatterySampleEntity? {
         capacity = capacity,
         charging = optBoolean("charging", false),
         status = optString("status", ""),
-        currentUA = optLong("currentUA", -1),
+        currentUA = WidgetStats.resolveDaemonCurrentUA(this),
         voltageUV = optLong("voltageUV", -1),
-        powerUW = optLong("powerUW", -1),
+        powerUW = WidgetStats.powerUW(optLong("voltageUV", -1), WidgetStats.resolveDaemonCurrentUA(this)),
         tempTenthsC = optInt("tempTenthsC", -1),
         cycleCount = optInt("cycleCount", -1),
     )
@@ -172,6 +181,31 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     var showResetConfirm by remember { mutableStateOf(false) }
 
+    // Export CSV: the system file picker chooses the destination (SAF), so
+    // no storage permission is needed.
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val samples = TaskManager.getBatteryDatabase(context).batterySampleDao().since(0L)
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        out.write(BatteryCsv.build(samples).toByteArray(Charsets.UTF_8))
+                    } ?: error("no output stream")
+                    samples.size
+                }.getOrNull()
+            }
+            Toast.makeText(
+                context,
+                if (ok != null) strings.batt_export_done.getString().format(ok)
+                else strings.batt_export_failed.getString(),
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
     // Live polling (request-id correlated; legacy daemons degrade gracefully).
     // In Live mode the poll cadence follows Settings -> Graph -> update delay
     // (the same knob the CPU/RAM/GPU live charts use via graphUpdater; the
@@ -182,8 +216,13 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
     LaunchedEffect(liveMode) {
         var lastCharging: Boolean? = null
         var transitionAt = 0L
-        while (isActive) {
-            val parsed = parseBattery(DaemonClient.battery(timeoutMs = 2_500))
+        PushHub.live(
+            "battery",
+            pollMs = {
+                if (liveMode) Settings.updateFrequency.coerceIn(150, 5_000).toLong() else 5_000L
+            },
+        ) { DaemonClient.battery(timeoutMs = 2_500) }.collect { response ->
+            val parsed = parseBattery(response)
             live = parsed
             if (liveMode && parsed != null && parsed.known && parsed.present) {
                 val now = System.currentTimeMillis()
@@ -208,10 +247,6 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
                     ) { liveChartGate() }
                 }
             }
-            delay(
-                if (liveMode) Settings.updateFrequency.coerceIn(150, 5_000).toLong()
-                else 5_000L
-            )
         }
     }
 
@@ -600,6 +635,16 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
+                    TextButton(
+                        enabled = sampleCount > 0,
+                        onClick = {
+                            val stamp = java.time.LocalDate.now().toString()
+                            exportLauncher.launch("battery-history-$stamp.csv")
+                        },
+                    ) {
+                        Text(text = stringResource(strings.batt_export_csv))
+                    }
+
                     // Destructive: wipes every stored sample so the graphs
                     // restart from scratch (samples resume within a minute).
                     TextButton(onClick = { showResetConfirm = true }) {
@@ -609,6 +654,11 @@ fun BatteryScreen(modifier: Modifier = Modifier) {
                         )
                     }
                 }
+            }
+
+            if (isConnected && DaemonClient.hasCap("app_power")) {
+                HorizontalDivider()
+                InfoCard { AppPowerCard() }
             }
         }
 

@@ -20,8 +20,9 @@ var useImperialUnits by mutableStateOf(Settings.useImperialUnits)
 
 /**
  * Compose-observable mirror of [Settings.batteryCurrentUnit]. Some devices report
- * battery current in microamps while others report milliamps. The unit is detected
- * once at runtime and persisted, and can be overridden by the user.
+ * battery current in microamps while others report milliamps. UNKNOWN means
+ * "Auto": the daemon's magnitude heuristic decides; an explicit unit is applied
+ * to the raw sysfs value (see WidgetStats.resolveDaemonCurrentUA).
  */
 var batteryCurrentUnit by mutableStateOf(Settings.batteryCurrentUnit)
 
@@ -55,7 +56,17 @@ fun Units(modifier: Modifier = Modifier) {
 
         PreferenceGroup(heading = stringResource(strings.battery_current)) {
             SelectableCard(
-                selected = batteryCurrentUnit != BatteryCurrentUnit.MILLIAMPS,
+                selected = batteryCurrentUnit == BatteryCurrentUnit.UNKNOWN,
+                label = stringResource(strings.battery_current_auto),
+                description = stringResource(strings.battery_current_auto_desc),
+                onClick = {
+                    batteryCurrentUnit = BatteryCurrentUnit.UNKNOWN
+                    Settings.batteryCurrentUnit = BatteryCurrentUnit.UNKNOWN
+                }
+            )
+
+            SelectableCard(
+                selected = batteryCurrentUnit == BatteryCurrentUnit.MICROAMPS,
                 label = stringResource(strings.battery_current_microamps),
                 description = stringResource(strings.battery_current_microamps_desc),
                 onClick = {

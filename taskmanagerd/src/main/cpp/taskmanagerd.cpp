@@ -67,7 +67,7 @@ namespace fs = std::filesystem;
 using json = nlohmann::json;
 
 static const char* DAEMON_NAME = "taskmanagerd";
-static const char* DAEMON_VERSION = "1.6.0-fork2";
+static const char* DAEMON_VERSION = "1.7.0-fork3";
 static constexpr int PROTOCOL_VERSION = 2;
 
 // Capabilities advertised in HELLO. The app can degrade gracefully when a
@@ -83,8 +83,14 @@ static json daemonCaps() {
         "battery_ping",         // BATTERY_PING: battery stats with unit heuristics
         "pss_ping",             // PSS_PING: PSS via /proc/<pid>/smaps_rollup
         "push_subscribe",       // SUBSCRIBE/UNSUBSCRIBE push mode
+        "freeze",               // FREEZE/THAW: SIGSTOP/SIGCONT a pid
+        "app_power",            // APP_POWER: per-uid mAh + wakelocks from batterystats
+        "reaper",               // HELLO reports orphaned sibling daemons it killed
+        "current_raw",          // BATTERY_STATS carries the unscaled currentRaw
     });
 }
+
+static int g_reapedCount();
 
 static json helloMessage() {
     return {
@@ -93,6 +99,7 @@ static json helloMessage() {
         {"daemon", DAEMON_NAME},
         {"version", DAEMON_VERSION},
         {"caps", daemonCaps()},
+        {"reaped", g_reapedCount()},
     };
 }
 
@@ -762,6 +769,14 @@ struct NetStatSnapshot {
 
 static std::unordered_map<std::string, NetStatSnapshot> netStatCache;
 
+// Byte counters are unsigned and reset when an interface goes down/up
+// (Wi-Fi reconnect, airplane mode). A plain `curr - prev` then wraps to
+// ~1.8e19 and the graph shows an absurd spike; report 0 for that window.
+static double counterRate(unsigned long long curr, unsigned long long prev, double dt) {
+    if (dt <= 0.0 || curr < prev) return 0.0;
+    return (double)(curr - prev) / dt;
+}
+
 // ---------------------------------------------------------------------------
 // Feature builders for the Phase-2 commands (CORE_PING, BATTERY_PING, PSS_PING,
 // SUBSCRIBE push payloads).
@@ -795,6 +810,9 @@ static json buildCoresJson() {
         long cur = readFileLong(cpufreq + "scaling_cur_freq", -1);
         long mn = readFileLong(cpufreq + "cpuinfo_min_freq", -1);
         long mx = readFileLong(cpufreq + "cpuinfo_max_freq", -1);
+        // Policy ceiling: thermal/power HALs lower scaling_max_freq below the
+        // hardware max when they throttle; that gap is the real "throttled".
+        long lim = readFileLong(cpufreq + "scaling_max_freq", -1);
         bool online = true;
         std::string onlinePath = "/sys/devices/system/cpu/cpu" + std::to_string(i) + "/online";
         struct stat st;
@@ -809,6 +827,7 @@ static json buildCoresJson() {
             {"freqKHz", cur},
             {"minFreqKHz", mn},
             {"maxFreqKHz", mx},
+            {"limitFreqKHz", lim},
         });
     }
     return arr;
@@ -858,7 +877,9 @@ static json buildBatteryJson() {
 
     std::string status = readFileTrimmed(base + "/status");
     j["status"] = status;
-    j["charging"] = (status == "Charging");
+    // "Full" means plugged in and topped off: same direction as Charging,
+    // matching the app's BATTERY_STATUS_FULL fallback (no sign flip at 100%).
+    j["charging"] = (status == "Charging" || status == "Full");
     j["health"] = readFileTrimmed(base + "/health");
 
     long long volt = -1;
@@ -877,6 +898,9 @@ static json buildBatteryJson() {
     j["voltageUV"] = hasVolt ? volt : -1;
     long long curUA = hasCur ? normalizeCurrentUA(curRaw) : -1;
     j["currentUA"] = curUA;
+    // Unscaled sysfs value, so the app can apply a user-chosen unit when the
+    // mA/uA heuristic above guesses wrong for a device.
+    j["currentRaw"] = hasCur ? curRaw : -1;
 
     // µV * µA = pW; /1e6 → µW. Reported as magnitude (sign varies by vendor).
     long long powerUW = -1;
@@ -988,8 +1012,8 @@ static json buildNetPushData(PusherState& st) {
                 if (it != st.netCache.end()) {
                     double dt = std::chrono::duration<double>(now - it->second.timestamp).count();
                     if (dt > 0) {
-                        rxPerSec = (double)(rx - it->second.rxBytes) / dt;
-                        txPerSec = (double)(tx - it->second.txBytes) / dt;
+                        rxPerSec = counterRate(rx, it->second.rxBytes, dt);
+                        txPerSec = counterRate(tx, it->second.txBytes, dt);
                     }
                 }
                 st.netCache[name] = {rx, tx, now};
@@ -1066,6 +1090,107 @@ static void startSubscription(const std::vector<std::string>& topics, int interv
     g_pushers.push_back(std::move(st));
 }
 
+// ---------------------------------------------------------------------------
+// Orphan reaper: only one daemon per app install should ever run. On start,
+// SIGKILL every other process executing the very same binary (same
+// /proc/<pid>/exe target), so leaked instances from older app builds or
+// crashed connections cannot pile up and keep sampling forever.
+// ---------------------------------------------------------------------------
+
+static int reapSiblingDaemons() {
+    char self[PATH_MAX];
+    ssize_t n = readlink("/proc/self/exe", self, sizeof(self) - 1);
+    if (n <= 0) return 0;
+    self[n] = '\0';
+    std::string selfExe(self);
+    int me = getpid();
+    int reaped = 0;
+    for (int pid : listPids()) {
+        if (pid == me) continue;
+        char path[64];
+        char target[PATH_MAX];
+        snprintf(path, sizeof(path), "/proc/%d/exe", pid);
+        ssize_t m = readlink(path, target, sizeof(target) - 1);
+        if (m <= 0) continue;
+        target[m] = '\0';
+        if (selfExe == target && kill(pid, SIGKILL) == 0) ++reaped;
+    }
+    return reaped;
+}
+
+static int g_reaped = 0;
+static int g_reapedCount() { return g_reaped; }
+
+// FREEZE/THAW: SIGSTOP / SIGCONT. Refuses init, ourselves and our parent
+// (the su/Shizuku shell feeding our stdin).
+static bool signalFreeze(int pid, bool freeze) {
+    if (pid <= 1 || pid == getpid() || pid == getppid()) return false;
+    return kill(pid, freeze ? SIGSTOP : SIGCONT) == 0;
+}
+
+// Runs a shell command and returns its stdout (bounded).
+static std::string runCapture(const char* cmd, size_t maxBytes = 16 * 1024 * 1024) {
+    std::string out;
+    FILE* f = popen(cmd, "r");
+    if (!f) return out;
+    char buf[4096];
+    size_t r;
+    while ((r = fread(buf, 1, sizeof(buf), f)) > 0) {
+        if (out.size() + r > maxBytes) break;
+        out.append(buf, r);
+    }
+    pclose(f);
+    return out;
+}
+
+// APP_POWER: per-uid estimated mAh and partial-wakelock time since the last
+// full charge, parsed from `dumpsys batterystats --checkin`:
+//   9,<uid>,l,pwi,uid,<mAh>,...
+//   9,<uid>,l,wl,<name>,<fullMs>,f,<count>,<partialMs>,p,<count>,...
+// Wakelock names may contain commas, so the partial time is located by the
+// "p" marker rather than by a fixed column.
+static json buildAppPowerJson() {
+    std::string dump = runCapture("dumpsys batterystats --checkin 2>/dev/null");
+    std::unordered_map<int, double> mah;
+    std::unordered_map<int, long long> wlMs;
+    std::unordered_map<int, int> wlCount;
+    std::istringstream in(dump);
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.rfind("9,", 0) != 0) continue;
+        std::vector<std::string> f;
+        std::string cell;
+        std::istringstream ls(line);
+        while (std::getline(ls, cell, ',')) f.push_back(cell);
+        if (f.size() < 6 || f[2] != "l") continue;
+        int uid = std::atoi(f[1].c_str());
+        if (f[3] == "pwi" && f[4] == "uid") {
+            mah[uid] += std::atof(f[5].c_str());
+        } else if (f[3] == "wl") {
+            for (size_t i = 6; i + 1 < f.size(); ++i) {
+                if (f[i] == "p") {
+                    wlMs[uid] += std::atoll(f[i - 1].c_str());
+                    wlCount[uid] += std::atoi(f[i + 1].c_str());
+                    break;
+                }
+            }
+        }
+    }
+    std::unordered_set<int> uids;
+    for (auto& kv : mah) uids.insert(kv.first);
+    for (auto& kv : wlMs) uids.insert(kv.first);
+    json apps = json::array();
+    for (int uid : uids) {
+        apps.push_back({
+            {"uid", uid},
+            {"mAh", mah.count(uid) ? mah[uid] : 0.0},
+            {"wakelockMs", wlMs.count(uid) ? wlMs[uid] : 0LL},
+            {"wakelockCount", wlCount.count(uid) ? wlCount[uid] : 0},
+        });
+    }
+    return {{"type", "APP_POWER"}, {"available", !dump.empty()}, {"apps", apps}};
+}
+
 void processCommand(const std::string &received) {
     json j_out;
     bool respond = true;
@@ -1077,6 +1202,23 @@ void processCommand(const std::string &received) {
             j_out["type"] = "PONG";
         } else if (cmd == "HELLO") {
             j_out = helloMessage();
+        } else if (cmd == "FREEZE" || cmd == "THAW") {
+            int pid = j_in.value("pid", -1);
+            j_out["type"] = "FREEZE_RESULT";
+            j_out["pid"] = pid;
+            j_out["frozen"] = (cmd == "FREEZE");
+            j_out["success"] = signalFreeze(pid, cmd == "FREEZE");
+        } else if (cmd == "APP_POWER") {
+            // dumpsys takes seconds: answer from a worker so the command
+            // loop (graphs, widget, kills) never stalls behind it. send_json
+            // is mutex-protected; the id is echoed by hand here.
+            json id = j_in.contains("id") ? j_in["id"] : json();
+            std::thread([id]() {
+                json out = buildAppPowerJson();
+                if (!id.is_null()) out["id"] = id;
+                send_json(out);
+            }).detach();
+            respond = false;
         } else if (cmd == "KILL") {
             int pid = j_in.value("pid", -1);
             bool success = (pid > 0) && killProcess(pid);
@@ -1214,8 +1356,8 @@ void processCommand(const std::string &received) {
                 double elapsed = std::chrono::duration<double>(now - prev.timestamp).count();
 
                 if (elapsed > 0.0) {
-                    j_out["rxBytesPerSec"] = (curr.rxBytes - prev.rxBytes) / elapsed;
-                    j_out["txBytesPerSec"] = (curr.txBytes - prev.txBytes) / elapsed;
+                    j_out["rxBytesPerSec"] = counterRate(curr.rxBytes, prev.rxBytes, elapsed);
+                    j_out["txBytesPerSec"] = counterRate(curr.txBytes, prev.txBytes, elapsed);
                 } else {
                     j_out["rxBytesPerSec"] = 0;
                     j_out["txBytesPerSec"] = 0;
@@ -1259,6 +1401,8 @@ int main() {
 
     // Protocol v2 handshake: announce who we are before the app says anything.
     // The app validates proto/caps and refuses to talk to incompatible daemons.
+    g_reaped = reapSiblingDaemons();
+    if (g_reaped > 0) log_line("reaped " + std::to_string(g_reaped) + " orphaned daemon(s)");
     send_json(helloMessage());
 
     // Background sampler keeps g_cpuUsage fresh; CPU_PING never blocks.

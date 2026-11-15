@@ -83,7 +83,7 @@ class TaskManager : Application() {
         // after reboots/process restarts; a no-op while no widget is placed
         // (the scheduler checks placed instances first).
         runCatching {
-            com.rk.taskmanager.widget.WidgetRefreshScheduler.schedule(this)
+            com.rk.taskmanager.widget.WidgetRefreshScheduler.scheduleIfNotArmed(this)
         }
     }
 }

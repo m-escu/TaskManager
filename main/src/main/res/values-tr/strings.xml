@@ -364,4 +364,22 @@
     <string name="vulkan_api">Vulkan API</string>
     <string name="what_you_get">NELER ELDE EDERSİNİZ</string>
     <string name="yes">Evet</string>
+    <!-- round2: push hub, freeze, app power, CSV, watchdog, current unit -->
+    <string name="battery_current_auto">Otomatik</string>
+    <string name="battery_current_auto_desc">Birimi değerin büyüklüğünden tahmin et (küçük değerler mA sayılır)</string>
+    <string name="core_capped">sınır %1$d%%</string>
+    <string name="freeze">Dondur</string>
+    <string name="thaw">Donduruldu — devam etmek için dokunun</string>
+    <string name="freeze_desc">İşlemi sonlandırmadan duraklat (SIGSTOP)</string>
+    <string name="freeze_desc_app">İşlemi duraklat (SIGSTOP). Dondurulmuş bir uygulama açıldığında \"yanıt vermiyor\" gösterebilir</string>
+    <string name="freeze_failed">İşlem durumu değiştirilemedi</string>
+    <string name="batt_app_power">Uygulamalara göre pil kullanımı</string>
+    <string name="batt_app_power_desc">Son tam şarjdan bu yana tahmini mAh ve wakelock süresi (batterystats verisi)</string>
+    <string name="batt_app_power_unavailable">Pil istatistikleri şu anda kullanılamıyor</string>
+    <string name="batt_app_power_empty">Son tam şarjdan bu yana kayıtlı pil kullanımı yok</string>
+    <string name="batt_export_csv">CSV olarak dışa aktar</string>
+    <string name="batt_export_done">%1$d örnek dışa aktarıldı</string>
+    <string name="batt_export_failed">Dışa aktarma başarısız</string>
+    <string name="daemon_reaped">Bekçi</string>
+    <string name="daemon_reaped_desc">Başlangıçta temizlenen sızmış daemon sayısı: %1$d</string>
 </resources>

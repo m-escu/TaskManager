@@ -391,4 +391,22 @@
 
     <!-- fork16: live battery charts -->
     <string name="batt_live_hint">Live readings, updated every second.</string>
+    <!-- round2: push hub, freeze, app power, CSV, watchdog, current unit -->
+    <string name="battery_current_auto">Auto</string>
+    <string name="battery_current_auto_desc">Guess the unit from the reading\'s size (small values are treated as mA)</string>
+    <string name="core_capped">capped %1$d%%</string>
+    <string name="freeze">Freeze</string>
+    <string name="thaw">Frozen — tap to resume</string>
+    <string name="freeze_desc">Pause the process (SIGSTOP) without killing it</string>
+    <string name="freeze_desc_app">Pause the process (SIGSTOP). A frozen app may show \"not responding\" if you open it</string>
+    <string name="freeze_failed">Could not change the process state</string>
+    <string name="batt_app_power">Battery use by app</string>
+    <string name="batt_app_power_desc">Estimated mAh and wakelock time since the last full charge (from batterystats)</string>
+    <string name="batt_app_power_unavailable">Battery stats are not available right now</string>
+    <string name="batt_app_power_empty">No battery use recorded since the last full charge</string>
+    <string name="batt_export_csv">Export CSV</string>
+    <string name="batt_export_done">Exported %1$d samples</string>
+    <string name="batt_export_failed">Export failed</string>
+    <string name="daemon_reaped">Watchdog</string>
+    <string name="daemon_reaped_desc">Leaked daemons cleaned up at start: %1$d</string>
 </resources>

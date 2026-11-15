@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
+import com.rk.commons.settings.BatteryCurrentUnit
 import com.rk.commons.settings.Settings
 import com.rk.taskmanager.daemon.DaemonClient
 import com.rk.taskmanager.daemon.isConnected
@@ -13,6 +14,7 @@ import com.rk.taskmanager.shizuku.ShizukuShell
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -47,10 +49,21 @@ object WidgetStats {
         @Volatile var stampMs: Long = 0L
     }
 
-    private const val PRIVILEGED_MIN_INTERVAL_MS = 250L
+    /**
+     * Without a daemon the app cannot read /proc/stat (SELinux denies it to
+     * untrusted apps), so CPU comes from a privileged shell. Every su/Shizuku
+     * spawn costs a process start and, under Magisk, a superuser log entry,
+     * and the cold path used to spawn two per refresh. Now one privileged
+     * call takes both samples, and its result is reused for this long.
+     */
+    private const val PRIVILEGED_CACHE_MS = 30_000L
+    private const val PRIVILEGED_WINDOW_MS = 400L
 
     @Volatile
-    private var lastPrivilegedReadMs = 0L
+    private var privilegedCpu = -1
+
+    @Volatile
+    private var privilegedCpuAtMs = 0L
 
     /**
      * Parses a "cpu  user nice system idle iowait ..." line into
@@ -88,55 +101,68 @@ object WidgetStats {
         File("/proc/stat").bufferedReader().use { it.readLine() }
     }.getOrNull()
 
-    private fun readProcStatViaSu(): String? = runCatching {
-        val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "cat /proc/stat"))
-        val line = process.inputStream.bufferedReader().readLine()
-        if (process.isAlive) process.waitFor(2, TimeUnit.SECONDS)
-        if (process.isAlive) process.destroy()
-        line
-    }.getOrNull()
+    /** Shell snippet printing two /proc/stat cpu lines [PRIVILEGED_WINDOW_MS] apart. */
+    private val twoSampleScript =
+        "head -n1 /proc/stat; sleep ${PRIVILEGED_WINDOW_MS / 1000.0}; head -n1 /proc/stat"
 
-    private suspend fun readProcStatViaShizuku(): String? = withContext(Dispatchers.IO) {
+    private fun twoSampleUsage(lines: List<String>): Int {
+        if (lines.size < 2) return -1
+        val a = parseCpuTimes(lines[0]) ?: return -1
+        val b = parseCpuTimes(lines[1]) ?: return -1
+        return usagePercent(a.first, a.second, b.first, b.second)
+    }
+
+    private fun privilegedUsageViaSu(): Int = runCatching {
+        val process = Runtime.getRuntime().exec(arrayOf("su", "-c", twoSampleScript))
+        try {
+            val lines = process.inputStream.bufferedReader().readLines()
+            process.waitFor(2, TimeUnit.SECONDS)
+            twoSampleUsage(lines)
+        } finally {
+            if (process.isAlive) process.destroy()
+        }
+    }.getOrDefault(-1)
+
+    private suspend fun privilegedUsageViaShizuku(): Int = withContext(Dispatchers.IO) {
         runCatching {
             if (ShizukuShell.isShizukuRunning().not() || ShizukuShell.isPermissionGranted().not()) {
-                return@runCatching null
+                return@runCatching -1
             }
             val process = ShizukuShell.startStreamingProcess(
-                cmd = arrayOf<String?>("cat", "/proc/stat"),
+                cmd = arrayOf<String?>("sh", "-c", twoSampleScript),
                 env = arrayOf<String?>(),
                 dir = "/",
             )
             try {
-                process.inputStream.bufferedReader().readLine()
+                twoSampleUsage(process.inputStream.bufferedReader().readLines())
             } finally {
-                // One remote process per sample at up to 1 Hz: never leave
-                // them behind in the Shizuku server.
+                // Never leave remote processes behind in the Shizuku server.
                 runCatching { process.destroy() }
             }
-        }.getOrNull()
+        }.getOrDefault(-1)
     }
 
-    /**
-     * One /proc/stat first line: direct read when possible, otherwise a
-     * throttled privileged read through the configured working mode.
-     */
-    private suspend fun readProcStatLine(): String? {
-        readProcStatDirect()?.let { return it }
-
+    /** Privileged two-sample CPU usage, cached for [PRIVILEGED_CACHE_MS]. */
+    private suspend fun privilegedCpuUsage(): Int {
         val now = System.currentTimeMillis()
-        if (now - lastPrivilegedReadMs < PRIVILEGED_MIN_INTERVAL_MS) return null
-        lastPrivilegedReadMs = now
-
-        return when (Settings.workingMode) {
-            WorkingMode.ROOT.id -> readProcStatViaSu()
-            WorkingMode.SHIZUKU.id -> readProcStatViaShizuku()
-            else -> null
+        if (privilegedCpuAtMs != 0L && now - privilegedCpuAtMs in 0 until PRIVILEGED_CACHE_MS) {
+            return privilegedCpu
         }
+        val usage = withContext(Dispatchers.IO) {
+            when (Settings.workingMode) {
+                WorkingMode.ROOT.id -> privilegedUsageViaSu()
+                WorkingMode.SHIZUKU.id -> privilegedUsageViaShizuku()
+                else -> -1
+            }
+        }
+        privilegedCpu = usage
+        privilegedCpuAtMs = now
+        return usage
     }
 
-    /** Reads /proc/stat, stores the sample in [CpuStore] and returns it. */
-    suspend fun sampleCpuTimes(): Pair<Long, Long>? {
-        val parsed = parseCpuTimes(readProcStatLine()) ?: return null
+    /** Reads /proc/stat directly, stores the sample in [CpuStore] and returns it. */
+    fun sampleCpuTimes(): Pair<Long, Long>? {
+        val parsed = parseCpuTimes(readProcStatDirect()) ?: return null
         CpuStore.total = parsed.first
         CpuStore.idle = parsed.second
         CpuStore.stampMs = System.currentTimeMillis()
@@ -151,6 +177,9 @@ object WidgetStats {
      */
     suspend fun cpuUsage(settleMs: Long = 350L): Int {
         cpuFromDaemon()?.let { return it }
+
+        // /proc/stat unreadable (the norm on modern Android): privileged path.
+        if (readProcStatDirect() == null) return privilegedCpuUsage()
 
         val prevTotal = CpuStore.total
         val prevIdle = CpuStore.idle
@@ -215,6 +244,28 @@ object WidgetStats {
         else -> abs(raw) * (if (charging) 1L else -1L)
     }
 
+    /**
+     * Vendor-raw current (µA, unsigned convention) from a daemon
+     * BATTERY_STATS answer, honoring Settings -> Units -> Battery current:
+     * AUTO keeps the daemon's mA/µA heuristic ("currentUA"); an explicit
+     * unit rescales the untouched sysfs value ("currentRaw", daemons with
+     * the current_raw cap). -1 = no reading.
+     */
+    fun resolveDaemonCurrentUA(j: JSONObject, unit: Int = Settings.batteryCurrentUnit): Long {
+        val heuristic = j.optLong("currentUA", -1L)
+        if (heuristic == -1L || !j.has("currentRaw")) return heuristic
+        val raw = j.optLong("currentRaw", 0L)
+        return when (unit) {
+            BatteryCurrentUnit.MICROAMPS -> raw
+            BatteryCurrentUnit.MILLIAMPS -> raw * 1000L
+            else -> heuristic
+        }
+    }
+
+    /** |V x I| in µW from µV and µA; -1 when either is unknown. */
+    fun powerUW(voltageUV: Long, currentUA: Long): Long =
+        if (voltageUV <= 0L || currentUA == -1L) -1L else abs(voltageUV * currentUA) / 1_000_000L
+
     /** True when the device is plugged in and charging (or full). */
     fun isCharging(context: Context): Boolean {
         val intent = runCatching {
@@ -236,13 +287,9 @@ object WidgetStats {
             runCatching {
                 val response = DaemonClient.battery()
                 if (response != null && response.optBoolean("present", true)) {
-                    val raw = response.optLong("currentUA", Long.MIN_VALUE)
+                    val raw = resolveDaemonCurrentUA(response)
                     val charging = response.optBoolean("charging", false)
-                    val current = if (raw == Long.MIN_VALUE) {
-                        -1L
-                    } else {
-                        normalizeCurrentUA(raw, charging)
-                    }
+                    val current = normalizeCurrentUA(raw, charging)
                     val temp = response.optInt("tempTenthsC", -1)
                     if (current != -1L || temp != -1) {
                         return BatterySample(currentUA = current, tempTenthsC = temp)

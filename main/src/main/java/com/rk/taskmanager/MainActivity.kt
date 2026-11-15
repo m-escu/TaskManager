@@ -92,6 +92,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        com.rk.taskmanager.daemon.PushHub.setForeground(true)
+    }
+
+    override fun onStop() {
+        com.rk.taskmanager.daemon.PushHub.setForeground(false)
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
         if (Settings.workingMode != -1) {

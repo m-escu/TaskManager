@@ -49,6 +49,41 @@ class WidgetStatsTest {
 
     // --- formatCurrent: stats row + widget rendering ----------------------
 
+    // -- Battery current unit resolution (Settings -> Units -> Battery current) --
+
+    private fun stats(currentUA: Long, currentRaw: Long?) = org.json.JSONObject().apply {
+        put("currentUA", currentUA)
+        if (currentRaw != null) put("currentRaw", currentRaw)
+    }
+
+    @Test fun autoKeepsDaemonHeuristic() {
+        // Daemon scaled -214 (mA) to -214000 µA; Auto must not touch it.
+        assertEquals(-214_000L, WidgetStats.resolveDaemonCurrentUA(stats(-214_000L, -214L), -1))
+    }
+
+    @Test fun explicitMicroampsUsesRawValue() {
+        // A µA device idling at 8 mA: the heuristic wrongly made it 8 A.
+        assertEquals(-8_000L, WidgetStats.resolveDaemonCurrentUA(stats(-8_000_000L, -8_000L), 0))
+    }
+
+    @Test fun explicitMilliampsScalesRawValue() {
+        assertEquals(12_000_000L, WidgetStats.resolveDaemonCurrentUA(stats(12_000L, 12_000L), 1))
+    }
+
+    @Test fun legacyDaemonWithoutRawFallsBackToHeuristic() {
+        assertEquals(-500_000L, WidgetStats.resolveDaemonCurrentUA(stats(-500_000L, null), 1))
+    }
+
+    @Test fun noReadingStaysUnknown() {
+        assertEquals(-1L, WidgetStats.resolveDaemonCurrentUA(stats(-1L, -1L), 1))
+    }
+
+    @Test fun powerFromVoltageAndCurrent() {
+        assertEquals(1_000_000L, WidgetStats.powerUW(4_000_000L, -250_000L)) // 4 V x 0.25 A = 1 W
+        assertEquals(-1L, WidgetStats.powerUW(-1L, 250_000L))
+        assertEquals(-1L, WidgetStats.powerUW(4_000_000L, -1L))
+    }
+
     @Test fun formatCurrentUnknownIsDash() {
         assertEquals("-", WidgetStats.formatCurrent(-1L))
     }
