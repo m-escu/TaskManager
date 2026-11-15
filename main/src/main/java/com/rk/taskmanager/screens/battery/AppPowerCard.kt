@@ -58,6 +58,11 @@ private fun labelForUid(context: Context, uid: Int): String {
         1001 -> return "Radio"
         1002 -> return "Bluetooth"
         1013 -> return "Media"
+        1036 -> return "logd"
+        1041 -> return "Audio server"
+        1046 -> return "Media codec"
+        1047 -> return "Camera server"
+        1066 -> return "statsd"
         Process.SHELL_UID -> return "Shell"
     }
     val pm = context.packageManager
@@ -159,7 +164,8 @@ fun AppPowerCard(limit: Int = 10) {
                         modifier = Modifier.width(72.dp),
                     )
                     Text(
-                        text = if (row.wakelockMs > 0) formatDurationShort(row.wakelockMs) else "—",
+                        // Under a second of wakelock is noise: show a dash, not "0 s".
+                        text = if (row.wakelockMs >= 1_000) formatDurationShort(row.wakelockMs) else "—",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.End,
