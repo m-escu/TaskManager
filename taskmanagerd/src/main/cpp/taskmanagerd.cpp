@@ -135,44 +135,62 @@ static bool isCpuThermalType(const std::string& type) {
            (t.find("cluster") != std::string::npos);
 }
 
-int getCpuTemperatureCelsius() {
+// CPU temperature = hottest CPU-ish thermal zone. Phones expose a lot of
+// zones (108 on a Snapdragon 8 Gen 3) and their "type" never changes, so
+// the list of matching temp paths is built once and refreshed every 5 min
+// instead of re-reading every type file per call. The result itself is
+// cached for 1 s: push frames and CTEMP_PING both ask for it.
+static std::mutex g_thermalMutex;
+static std::vector<std::string> g_cpuZoneTempPaths;
+static std::chrono::steady_clock::time_point g_cpuZonesScannedAt{};
+static bool g_cpuZonesScanned = false;
+static int g_cpuTempCached = -1;
+static std::chrono::steady_clock::time_point g_cpuTempAt{};
+
+static void rescanCpuZones() {
+    g_cpuZoneTempPaths.clear();
     const std::string basePath = "/sys/class/thermal/";
     DIR* dir = opendir(basePath.c_str());
-    if (!dir) return -1;
-
+    if (!dir) return;
     struct dirent* entry;
-    int maxTemp = -1;
-
     while ((entry = readdir(dir)) != nullptr) {
         std::string name = entry->d_name;
         if (name.find("thermal_zone") == std::string::npos) continue;
-
         std::string zonePath = basePath + name;
         std::ifstream typeFile(zonePath + "/type");
         if (!typeFile.is_open()) continue;
-
         std::string type;
         std::getline(typeFile, type);
-        typeFile.close();
-
-        if (!isCpuThermalType(type)) continue;
-
-        std::ifstream tempFile(zonePath + "/temp");
-        if (!tempFile.is_open()) continue;
-
-        long raw = 0;
-        tempFile >> raw;
-        tempFile.close();
-
-        if (raw <= 0) continue;
-
-        int tempC = (raw > 1000) ? static_cast<int>(raw / 1000) : static_cast<int>(raw);
-        if (tempC >= 5 && tempC <= 100) {
-            maxTemp = std::max(maxTemp, tempC);
-        }
+        if (isCpuThermalType(type)) g_cpuZoneTempPaths.push_back(zonePath + "/temp");
     }
-
     closedir(dir);
+}
+
+int getCpuTemperatureCelsius() {
+    std::lock_guard<std::mutex> lock(g_thermalMutex);
+    auto now = std::chrono::steady_clock::now();
+    if (g_cpuZonesScanned && now - g_cpuTempAt < std::chrono::seconds(1)) return g_cpuTempCached;
+    if (!g_cpuZonesScanned || now - g_cpuZonesScannedAt > std::chrono::minutes(5)) {
+        rescanCpuZones();
+        g_cpuZonesScanned = true;
+        g_cpuZonesScannedAt = now;
+    }
+    int maxTemp = -1;
+    for (const auto& path : g_cpuZoneTempPaths) {
+        char buf[32];
+        int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+        if (fd < 0) continue;
+        ssize_t n = read(fd, buf, sizeof(buf) - 1);
+        close(fd);
+        if (n <= 0) continue;
+        buf[n] = '\0';
+        long raw = atol(buf);
+        if (raw <= 0) continue;
+        int tempC = (raw > 1000) ? static_cast<int>(raw / 1000) : static_cast<int>(raw);
+        if (tempC >= 5 && tempC <= 100) maxTemp = std::max(maxTemp, tempC);
+    }
+    g_cpuTempCached = maxTemp;
+    g_cpuTempAt = now;
     return maxTemp;
 }
 
@@ -618,27 +636,6 @@ float calculateProcessCpuUsage(int pid) {
     return 0.0f;
 }
 
-bool isForegroundProcess(int pid) {
-    std::string oomPath = "/proc/" + std::to_string(pid) + "/oom_score_adj";
-    std::ifstream oomFile(oomPath);
-    if (!oomFile.is_open()) return false;
-    int oomScore = 0;
-    oomFile >> oomScore;
-    return oomScore <= 100;
-}
-
-std::string getCgroup(int pid) {
-    std::string cgroupPath = "/proc/" + std::to_string(pid) + "/cgroup";
-    std::ifstream cgroupFile(cgroupPath);
-    if (!cgroupFile.is_open()) return "";
-    std::string line;
-    if (std::getline(cgroupFile, line)) {
-        size_t colonPos = line.find_last_of(':');
-        if (colonPos != std::string::npos) return line.substr(colonPos + 1);
-    }
-    return line;
-}
-
 std::string getExecutablePath(int pid) {
     std::string exePath = "/proc/" + std::to_string(pid) + "/exe";
     char path[PATH_MAX];
@@ -647,51 +644,196 @@ std::string getExecutablePath(int pid) {
     return "";
 }
 
-Proc readProc(int pid) {
-    Proc p{}; p.pid = pid;
-    std::string procPath = "/proc/" + std::to_string(pid);
-    std::ifstream commFile(procPath + "/comm");
-    if (commFile.is_open()) std::getline(commFile, p.name);
-    std::ifstream cmdFile(procPath + "/cmdline", std::ios::binary);
-    if (cmdFile.is_open()) std::getline(cmdFile, p.cmdLine, '\0');
-    long totalTime = 0;
-    long startTime = 0;
-    if (readProcCpuFields(pid, totalTime, startTime)) {
-        p.startTime = startTime;
-        std::ifstream statFile(procPath + "/stat");
-        std::string line;
-        if (std::getline(statFile, line)) {
-            size_t lastParen = line.rfind(')');
-            if (lastParen != std::string::npos) {
-                std::istringstream iss(line.substr(lastParen + 2));
-                std::string dummy;
-                for (int i = 0; i < 6; ++i) iss >> dummy;
-                for (int i = 0; i < 9; ++i) iss >> dummy;
-                iss >> dummy;
-                iss >> p.nice;
-                iss >> dummy >> dummy;
+// ---------------------------------------------------------------------------
+// LIST_PROCESS hot path. A scan used to open ~11 files per pid (stat three
+// times, /proc/uptime twice, status, comm, cmdline, oom_score_adj, cgroup,
+// exe) -- ~10k opens every 5 s on a phone with ~950 processes. Now:
+//  - /proc/<pid>/stat is read ONCE with raw open/read and supplies name,
+//    state, ppid, nice, threads, utime+stime, starttime, vsize and rss
+//    (everything status was read for, except the uid);
+//  - uptime is read once per scan;
+//  - fields that never change for a given process (cmdline, exe, uid) are
+//    cached per (pid, starttime) once the process is a few seconds old, so a
+//    freshly forked app process still picks up its final name;
+//  - only oom_score_adj (foreground) and cgroup are re-read every scan.
+// ---------------------------------------------------------------------------
+
+// Reads a small /proc file into buf (NUL-terminated). Returns bytes read, or -1.
+static ssize_t readSmall(const char* path, char* buf, size_t cap) {
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return -1;
+    ssize_t n = read(fd, buf, cap - 1);
+    close(fd);
+    if (n < 0) return -1;
+    buf[n] = '\0';
+    return n;
+}
+
+struct StatFields {
+    std::string comm;
+    char state = '?';
+    int ppid = 0;
+    long utime = 0, stime = 0;
+    int nice = 0;
+    int threads = 0;
+    long starttime = 0;
+    unsigned long vsize = 0;  // bytes
+    long rssPages = 0;
+};
+
+// Parses one /proc/<pid>/stat line. comm may contain spaces and ')' so it is
+// taken between the first '(' and the LAST ')'.
+static bool parseStatLine(const char* buf, StatFields& f) {
+    const char* open_ = strchr(buf, '(');
+    const char* close_ = strrchr(buf, ')');
+    if (!open_ || !close_ || close_ < open_ || close_[1] != ' ') return false;
+    f.comm.assign(open_ + 1, close_ - open_ - 1);
+    // Token N after ") " is stat field N+2.
+    const char* q = close_ + 2;
+    int field = 3;
+    while (*q && field <= 24) {
+        char* end = nullptr;
+        if (field == 3) {
+            f.state = *q;
+            while (*q && *q != ' ') ++q;
+        } else {
+            long long v = strtoll(q, &end, 10);
+            switch (field) {
+                case 4: f.ppid = (int)v; break;
+                case 14: f.utime = (long)v; break;
+                case 15: f.stime = (long)v; break;
+                case 19: f.nice = (int)v; break;
+                case 20: f.threads = (int)v; break;
+                case 22: f.starttime = (long)v; break;
+                case 23: f.vsize = (unsigned long)v; break;
+                case 24: f.rssPages = (long)v; break;
+                default: break;
             }
+            q = end ? end : q;
+            while (*q && *q != ' ') ++q;
         }
+        while (*q == ' ') ++q;
+        ++field;
     }
-    long uptime = getSystemUptime();
-    p.elapsedTime = static_cast<float>(uptime - p.startTime) / sysconf(_SC_CLK_TCK);
-    std::ifstream statusFile(procPath + "/status");
-    std::string line;
-    int fieldsFound = 0;
-    while (fieldsFound < 6 && std::getline(statusFile, line)) {
-        if (line.compare(0, 4, "Uid:") == 0) { p.uid = std::stoi(line.substr(5)); fieldsFound++; }
-        else if (line.compare(0, 5, "PPid:") == 0) { p.parentPid = std::stoi(line.substr(6)); fieldsFound++; }
-        else if (line.compare(0, 6, "VmRSS:") == 0) { p.residentSetSizeKb = std::stol(line.substr(7)); p.memoryUsageKb = p.residentSetSizeKb; fieldsFound++; }
-        else if (line.compare(0, 7, "VmSize:") == 0) { p.virtualMemoryKb = std::stol(line.substr(8)); fieldsFound++; }
-        else if (line.compare(0, 8, "Threads:") == 0) { p.threads = std::stoi(line.substr(9)); fieldsFound++; }
-        else if (line.compare(0, 6, "State:") == 0) { p.state = line.substr(7); fieldsFound++; }
+    return field > 24;
+}
+
+// Same wording /proc/<pid>/status uses, so the app's "state" text is unchanged.
+static std::string stateLabel(char c) {
+    switch (c) {
+        case 'R': return "R (running)";
+        case 'S': return "S (sleeping)";
+        case 'D': return "D (disk sleep)";
+        case 'T': return "T (stopped)";
+        case 't': return "t (tracing stop)";
+        case 'Z': return "Z (zombie)";
+        case 'X': return "X (dead)";
+        case 'I': return "I (idle)";
+        case 'P': return "P (parked)";
+        default: return std::string(1, c);
     }
-    p.cpuTimeTicks = totalTime;
-    p.cpuUsage = calculateProcessCpuUsage(pid);
-    p.isForeground = isForegroundProcess(pid);
-    p.cgroup = getCgroup(pid);
-    p.executablePath = getExecutablePath(pid);
-    return p;
+}
+
+struct StaticProcInfo {
+    long starttime;
+    std::string cmdLine;
+    std::string exe;
+    int uid;
+};
+
+// Only touched from the command loop (LIST_PROCESS), no lock needed.
+static std::unordered_map<int, StaticProcInfo> g_staticProcInfo;
+static constexpr double STATIC_CACHE_MIN_AGE_S = 5.0;
+
+static int readUid(int pid) {
+    char path[64];
+    char buf[2048];
+    snprintf(path, sizeof(path), "/proc/%d/status", pid);
+    if (readSmall(path, buf, sizeof(buf)) <= 0) return -1;
+    const char* u = strstr(buf, "\nUid:");
+    return u ? atoi(u + 5) : -1;
+}
+
+static StaticProcInfo readStaticInfo(int pid, long starttime) {
+    StaticProcInfo info{starttime, "", "", -1};
+    char path[64];
+    char buf[4096];
+    snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
+    if (readSmall(path, buf, sizeof(buf)) > 0) info.cmdLine = buf; // argv[0] up to the first NUL
+    info.exe = getExecutablePath(pid);
+    info.uid = readUid(pid);
+    return info;
+}
+
+static int g_pageKb = 4;
+
+static bool readProcFast(int pid, long uptimeTicks, double clkTck, bool withCgroup, Proc& p) {
+    char path[64];
+    char buf[1024];
+    snprintf(path, sizeof(path), "/proc/%d/stat", pid);
+    if (readSmall(path, buf, sizeof(buf)) <= 0) return false;
+    StatFields f;
+    if (!parseStatLine(buf, f)) return false;
+
+    p = Proc{};
+    p.pid = pid;
+    p.name = f.comm;
+    p.nice = f.nice;
+    p.parentPid = f.ppid;
+    p.state = stateLabel(f.state);
+    p.threads = f.threads;
+    p.startTime = f.starttime;
+    p.elapsedTime = static_cast<float>(uptimeTicks - f.starttime) / clkTck;
+    p.residentSetSizeKb = f.rssPages * g_pageKb;
+    p.memoryUsageKb = p.residentSetSizeKb;
+    p.virtualMemoryKb = (long)(f.vsize / 1024);
+    p.cpuTimeTicks = f.utime + f.stime;
+
+    // Static fields: cached once the process has settled.
+    auto it = g_staticProcInfo.find(pid);
+    if (it != g_staticProcInfo.end() && it->second.starttime == f.starttime) {
+        p.cmdLine = it->second.cmdLine;
+        p.executablePath = it->second.exe;
+        p.uid = it->second.uid;
+    } else {
+        StaticProcInfo info = readStaticInfo(pid, f.starttime);
+        p.cmdLine = info.cmdLine;
+        p.executablePath = info.exe;
+        p.uid = info.uid;
+        if (p.elapsedTime >= STATIC_CACHE_MIN_AGE_S) g_staticProcInfo[pid] = std::move(info);
+        else if (it != g_staticProcInfo.end()) g_staticProcInfo.erase(it); // pid reused
+    }
+
+    // CPU%: windowed delta, lifetime average the first time a pid is seen.
+    float windowed = windowedProcCpuUsage(pid, p.cpuTimeTicks);
+    if (windowed >= 0.0f) {
+        p.cpuUsage = windowed;
+    } else {
+        long alive = uptimeTicks - f.starttime;
+        p.cpuUsage = alive > 0 ? (100.0f * p.cpuTimeTicks) / alive : 0.0f;
+    }
+
+    // Dynamic fields, re-read every scan.
+    snprintf(path, sizeof(path), "/proc/%d/oom_score_adj", pid);
+    p.isForeground = readSmall(path, buf, sizeof(buf)) > 0 && atoi(buf) <= 100;
+    // cgroup is opt-in (LIST_PROCESS "cgroup": true): the app never shows
+    // it, and it was a third of the per-pid reads on every scan.
+    snprintf(path, sizeof(path), "/proc/%d/cgroup", pid);
+    if (withCgroup && readSmall(path, buf, sizeof(buf)) > 0) {
+        char* nl = strchr(buf, '\n');
+        if (nl) *nl = '\0';
+        char* colon = strrchr(buf, ':');
+        p.cgroup = colon ? std::string(colon + 1) : std::string(buf);
+    }
+    return true;
+}
+
+static void pruneStaticProcInfo(const std::vector<int>& livePids) {
+    std::unordered_set<int> live(livePids.begin(), livePids.end());
+    for (auto it = g_staticProcInfo.begin(); it != g_staticProcInfo.end();) {
+        if (live.count(it->first) == 0) it = g_staticProcInfo.erase(it);
+        else ++it;
+    }
 }
 
 json procToJson(const Proc &p) {
@@ -706,12 +848,22 @@ json procToJson(const Proc &p) {
     };
 }
 
-std::vector<Proc> collectProcs() {
+std::vector<Proc> collectProcs(bool withCgroup) {
     std::vector<Proc> procs;
     std::vector<int> pids = listPids();
     procs.reserve(pids.size());
-    for (int pid : pids) { try { procs.push_back(readProc(pid)); } catch (...) {} }
+    long uptime = getSystemUptime();
+    double clk = (double)sysconf(_SC_CLK_TCK);
+    long pageSize = sysconf(_SC_PAGESIZE);
+    if (pageSize > 0) g_pageKb = (int)(pageSize / 1024);
+    for (int pid : pids) {
+        try {
+            Proc p;
+            if (readProcFast(pid, uptime, clk, withCgroup, p)) procs.push_back(std::move(p));
+        } catch (...) {}
+    }
     pruneProcCpuSamples(pids);
+    pruneStaticProcInfo(pids);
     return procs;
 }
 
@@ -1285,7 +1437,7 @@ void processCommand(const std::string &received) {
             keep_running.store(false);
             respond = false;
         } else if (cmd == "LIST_PROCESS") {
-            auto procs = collectProcs();
+            auto procs = collectProcs(j_in.value("cgroup", false));
             json procs_j = json::array();
             for (const auto &p : procs) procs_j.push_back(procToJson(p));
             j_out["type"] = "PROCESS_LIST";
