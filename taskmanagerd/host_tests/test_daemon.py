@@ -136,6 +136,12 @@ def main():
           and abs(me["residentSetSizeKb"] - vmrss) <= max(256, vmrss // 5),
           f"stat={me and me['residentSetSizeKb']} status={vmrss}")
     check("fast_cmdline", me is not None and "taskmanagerd_host" in me["cmdLine"], str(me)[:200])
+    # cgroup is opt-in: empty by default, filled when asked for.
+    check("cgroup_default_empty", me is not None and me.get("cgroup") == "", str(me)[:200])
+    rc = d.request({"cmd": "LIST_PROCESS", "cgroup": True})
+    me_c = next((p for p in rc["processes"] if p["pid"] == d.proc.pid), None)
+    check("cgroup_opt_in", me_c is not None and isinstance(me_c.get("cgroup"), str)
+          and me_c["cgroup"] != "", str(me_c)[:200])
     # comm with spaces and ')' must not break the parser.
     weird = subprocess.Popen([sys.executable, "-c",
         "import ctypes,time; ctypes.CDLL(None).prctl(15, b'a b) c', 0, 0, 0); time.sleep(5)"])

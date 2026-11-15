@@ -767,7 +767,7 @@ static StaticProcInfo readStaticInfo(int pid, long starttime) {
 
 static int g_pageKb = 4;
 
-static bool readProcFast(int pid, long uptimeTicks, double clkTck, Proc& p) {
+static bool readProcFast(int pid, long uptimeTicks, double clkTck, bool withCgroup, Proc& p) {
     char path[64];
     char buf[1024];
     snprintf(path, sizeof(path), "/proc/%d/stat", pid);
@@ -816,8 +816,10 @@ static bool readProcFast(int pid, long uptimeTicks, double clkTck, Proc& p) {
     // Dynamic fields, re-read every scan.
     snprintf(path, sizeof(path), "/proc/%d/oom_score_adj", pid);
     p.isForeground = readSmall(path, buf, sizeof(buf)) > 0 && atoi(buf) <= 100;
+    // cgroup is opt-in (LIST_PROCESS "cgroup": true): the app never shows
+    // it, and it was a third of the per-pid reads on every scan.
     snprintf(path, sizeof(path), "/proc/%d/cgroup", pid);
-    if (readSmall(path, buf, sizeof(buf)) > 0) {
+    if (withCgroup && readSmall(path, buf, sizeof(buf)) > 0) {
         char* nl = strchr(buf, '\n');
         if (nl) *nl = '\0';
         char* colon = strrchr(buf, ':');
@@ -846,7 +848,7 @@ json procToJson(const Proc &p) {
     };
 }
 
-std::vector<Proc> collectProcs() {
+std::vector<Proc> collectProcs(bool withCgroup) {
     std::vector<Proc> procs;
     std::vector<int> pids = listPids();
     procs.reserve(pids.size());
@@ -857,7 +859,7 @@ std::vector<Proc> collectProcs() {
     for (int pid : pids) {
         try {
             Proc p;
-            if (readProcFast(pid, uptime, clk, p)) procs.push_back(std::move(p));
+            if (readProcFast(pid, uptime, clk, withCgroup, p)) procs.push_back(std::move(p));
         } catch (...) {}
     }
     pruneProcCpuSamples(pids);
@@ -1435,7 +1437,7 @@ void processCommand(const std::string &received) {
             keep_running.store(false);
             respond = false;
         } else if (cmd == "LIST_PROCESS") {
-            auto procs = collectProcs();
+            auto procs = collectProcs(j_in.value("cgroup", false));
             json procs_j = json::array();
             for (const auto &p : procs) procs_j.push_back(procToJson(p));
             j_out["type"] = "PROCESS_LIST";
