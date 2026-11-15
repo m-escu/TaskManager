@@ -118,6 +118,37 @@ def main():
     check("cpuTimeTicks_field", all("cpuTimeTicks" in p for p in procs))
     check("self_in_list", any(p["pid"] == d.proc.pid for p in procs))
 
+    # --- 4b. Single-pass stat parsing matches /proc/<pid>/status -----------
+    me = next((p for p in procs if p["pid"] == d.proc.pid), None)
+    status = {}
+    with open(f"/proc/{d.proc.pid}/status") as f:
+        for line in f:
+            k, _, v = line.partition(":")
+            status[k] = v.strip()
+    check("fast_name", me is not None and me["name"] == status.get("Name"), str(me)[:200])
+    check("fast_ppid", me is not None and me["parentPid"] == os.getpid(), str(me)[:200])
+    check("fast_uid", me is not None and me["uid"] == os.getuid(), str(me)[:200])
+    check("fast_threads", me is not None and me["threads"] >= 2, str(me)[:200])
+    check("fast_state_label", me is not None and len(me["state"]) >= 3
+          and me["state"][1:3] == " (" and me["state"].endswith(")"), str(me)[:200])
+    vmrss = int(status.get("VmRSS", "0 kB").split()[0])
+    check("fast_rss_close_to_status", me is not None and vmrss > 0
+          and abs(me["residentSetSizeKb"] - vmrss) <= max(256, vmrss // 5),
+          f"stat={me and me['residentSetSizeKb']} status={vmrss}")
+    check("fast_cmdline", me is not None and "taskmanagerd_host" in me["cmdLine"], str(me)[:200])
+    # comm with spaces and ')' must not break the parser.
+    weird = subprocess.Popen([sys.executable, "-c",
+        "import ctypes,time; ctypes.CDLL(None).prctl(15, b'a b) c', 0, 0, 0); time.sleep(5)"])
+    time.sleep(0.5)
+    try:
+        r2 = d.request({"cmd": "LIST_PROCESS"})
+        w = next((p for p in r2["processes"] if p["pid"] == weird.pid), None)
+        check("fast_weird_comm", w is not None and w["name"] == "a b) c"
+              and w["parentPid"] == os.getpid() and w["threads"] >= 1, str(w)[:200])
+    finally:
+        weird.kill()
+        weird.wait()
+
     # --- 5. Windowed per-process CPU ---------------------------------------
     busy = subprocess.Popen(["sh", "-c", "while :; do :; done"])
     time.sleep(0.1)
