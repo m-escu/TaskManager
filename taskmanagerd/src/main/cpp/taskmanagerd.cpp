@@ -294,18 +294,13 @@ static constexpr int MAX_CORES = 64;
 static std::atomic<int> g_coreUsage[MAX_CORES];
 static std::atomic<int> g_coreCount{0};
 
-// Milliseconds (steady clock) of the last CPU_PING / CORE_PING / push "cpu"
-// frame. The sampler runs at 10 Hz only while someone wants CPU data and
-// idles at 1 Hz otherwise, so an attached-but-idle daemon costs ~nothing.
-static std::atomic<long long> g_lastCpuDemandMs{0};
-static constexpr long long CPU_DEMAND_HOLD_MS = 5000;
-
-static long long steadyNowMs() {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now().time_since_epoch()).count();
-}
-
-static void noteCpuDemand() { g_lastCpuDemandMs.store(steadyNowMs()); }
+// Sampling period of the CPU sampler. Every open of /proc/stat makes the
+// kernel render the whole file (IRQ table included, ~10 ms on an 8-core
+// phone), so the sampler runs at 1 Hz by default -- a 1 s window is plenty
+// for CPU_PING / CORE_PING and the widget -- and only speeds up (down to
+// 250 ms) while a push subscription with the "cpu" topic asks for it.
+static constexpr int SAMPLE_PERIOD_IDLE_MS = 1000;
+static std::atomic<int> g_samplePeriodMs{SAMPLE_PERIOD_IDLE_MS};
 
 // One pass over /proc/stat: the aggregate "cpu " line plus every "cpuN"
 // line. Stops at the first non-cpu line, so the very long "intr" line that
@@ -335,16 +330,17 @@ void cpuSamplerLoop() {
     std::vector<CpuStat> currCores;
     readAllCpuStat(prev, prevCores);
     g_coreCount.store((int)prevCores.size());
-    // Start busy: the app pings CPU right after the handshake.
-    noteCpuDemand();
+    // First window is short so CPU_PING right after the handshake already
+    // has a value; afterwards the period follows g_samplePeriodMs.
+    bool first = true;
     while (keep_running.load()) {
-        bool busy = steadyNowMs() - g_lastCpuDemandMs.load() < CPU_DEMAND_HOLD_MS;
-        // Sleep in 100 ms slices so demand / shutdown are noticed quickly.
-        int slices = busy ? 1 : 10;
-        for (int i = 0; i < slices && keep_running.load(); ++i) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            if (!busy && steadyNowMs() - g_lastCpuDemandMs.load() < CPU_DEMAND_HOLD_MS) break;
+        // Sleep in 50 ms slices so period changes / shutdown apply quickly.
+        int waited = 0;
+        while (keep_running.load() && waited < (first ? 200 : g_samplePeriodMs.load())) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            waited += 50;
         }
+        first = false;
         if (!keep_running.load()) break;
         if (!readAllCpuStat(curr, currCores)) continue;
 
@@ -1058,7 +1054,6 @@ static json buildNetPushData(PusherState& st) {
 
 static json buildPushData(const std::string& topic, PusherState& st) {
     if (topic == "cpu") {
-        noteCpuDemand();
         return {
             {"usage", g_cpuUsage.load()},
             {"temp", getCpuTemperatureCelsius()},
@@ -1296,7 +1291,6 @@ void processCommand(const std::string &received) {
             j_out["type"] = "PROCESS_LIST";
             j_out["processes"] = procs_j;
         } else if (cmd == "CPU_PING") {
-            noteCpuDemand();
             j_out["type"] = "CPU_USAGE";
             j_out["usage"] = g_cpuUsage.load();
         } else if (cmd == "SWAP_PING") {
@@ -1319,7 +1313,6 @@ void processCommand(const std::string &received) {
             j_out["type"] = "CHARGE_CYCLES";
             j_out["cycles"] = getBatteryCycleCount().value_or(-1);
         } else if (cmd == "CORE_PING") {
-            noteCpuDemand();
             j_out["type"] = "CORE_USAGE";
             j_out["usage"] = g_cpuUsage.load();
             j_out["cores"] = buildCoresJson();
@@ -1357,12 +1350,17 @@ void processCommand(const std::string &received) {
             } else {
                 int intervalMs = std::clamp(j_in.value("intervalMs", 1000), 250, 60000);
                 startSubscription(topics, intervalMs);
+                bool wantsCpu = std::find(topics.begin(), topics.end(), "cpu") != topics.end();
+                g_samplePeriodMs.store(wantsCpu
+                    ? std::clamp(intervalMs, 250, SAMPLE_PERIOD_IDLE_MS)
+                    : SAMPLE_PERIOD_IDLE_MS);
                 j_out["type"] = "SUBSCRIBED";
                 j_out["topics"] = topics;
                 j_out["intervalMs"] = intervalMs;
             }
         } else if (cmd == "UNSUBSCRIBE") {
             stopPushersAndJoin();
+            g_samplePeriodMs.store(SAMPLE_PERIOD_IDLE_MS);
             j_out["type"] = "UNSUBSCRIBED";
         } else if (cmd == "LIST_NET_INTERFACES") {
             auto interfaces = listNetInterfaces();
