@@ -294,32 +294,60 @@ static constexpr int MAX_CORES = 64;
 static std::atomic<int> g_coreUsage[MAX_CORES];
 static std::atomic<int> g_coreCount{0};
 
-// Reads every "cpuN" line of /proc/stat. Returns false if the file is
-// unreadable (aggregate line missing is tolerated for core-less hosts).
-static bool readPerCoreStat(std::vector<CpuStat>& cores) {
+// Milliseconds (steady clock) of the last CPU_PING / CORE_PING / push "cpu"
+// frame. The sampler runs at 10 Hz only while someone wants CPU data and
+// idles at 1 Hz otherwise, so an attached-but-idle daemon costs ~nothing.
+static std::atomic<long long> g_lastCpuDemandMs{0};
+static constexpr long long CPU_DEMAND_HOLD_MS = 5000;
+
+static long long steadyNowMs() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+static void noteCpuDemand() { g_lastCpuDemandMs.store(steadyNowMs()); }
+
+// One pass over /proc/stat: the aggregate "cpu " line plus every "cpuN"
+// line. Stops at the first non-cpu line, so the very long "intr" line that
+// follows is never read (it dominated the sampler's cost when the file was
+// read twice per tick in full).
+static bool readAllCpuStat(CpuStat& total, std::vector<CpuStat>& cores) {
     std::ifstream file("/proc/stat");
     if (!file.is_open()) return false;
-    std::string line;
     cores.clear();
+    std::string line;
+    bool gotTotal = false;
     while (std::getline(file, line)) {
-        if (line.rfind("cpu", 0) != 0 || line.size() < 4) continue;
-        if (!std::isdigit(static_cast<unsigned char>(line[3]))) continue;
-        CpuStat c;
-        if (parseCpuFields(line, c)) cores.push_back(c);
+        if (line.rfind("cpu", 0) != 0) break;
+        if (line.size() > 3 && line[3] == ' ') {
+            gotTotal = parseCpuFields(line, total);
+        } else if (line.size() > 3 && std::isdigit(static_cast<unsigned char>(line[3]))) {
+            CpuStat c;
+            if (parseCpuFields(line, c)) cores.push_back(c);
+        }
     }
-    return true;
+    return gotTotal;
 }
 
 void cpuSamplerLoop() {
-    CpuStat prev = readCpuStat();
+    CpuStat prev, curr;
     std::vector<CpuStat> prevCores;
     std::vector<CpuStat> currCores;
-    readPerCoreStat(prevCores);
+    readAllCpuStat(prev, prevCores);
     g_coreCount.store((int)prevCores.size());
+    // Start busy: the app pings CPU right after the handshake.
+    noteCpuDemand();
     while (keep_running.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        bool busy = steadyNowMs() - g_lastCpuDemandMs.load() < CPU_DEMAND_HOLD_MS;
+        // Sleep in 100 ms slices so demand / shutdown are noticed quickly.
+        int slices = busy ? 1 : 10;
+        for (int i = 0; i < slices && keep_running.load(); ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            if (!busy && steadyNowMs() - g_lastCpuDemandMs.load() < CPU_DEMAND_HOLD_MS) break;
+        }
         if (!keep_running.load()) break;
-        CpuStat curr = readCpuStat();
+        if (!readAllCpuStat(curr, currCores)) continue;
+
         long totalDiff = curr.total() - prev.total();
         long activeDiff = curr.active() - prev.active();
         if (totalDiff > 0) {
@@ -328,19 +356,17 @@ void cpuSamplerLoop() {
         }
         prev = curr;
 
-        if (readPerCoreStat(currCores)) {
-            size_t n = std::min(prevCores.size(), currCores.size());
-            for (size_t i = 0; i < n && i < MAX_CORES; ++i) {
-                long dTotal = currCores[i].total() - prevCores[i].total();
-                long dActive = currCores[i].active() - prevCores[i].active();
-                if (dTotal > 0) {
-                    double u = (double)dActive / (double)dTotal * 100.0;
-                    g_coreUsage[i].store(std::clamp((int)u, 0, 100));
-                }
+        size_t n = std::min(prevCores.size(), currCores.size());
+        for (size_t i = 0; i < n && i < MAX_CORES; ++i) {
+            long dTotal = currCores[i].total() - prevCores[i].total();
+            long dActive = currCores[i].active() - prevCores[i].active();
+            if (dTotal > 0) {
+                double u = (double)dActive / (double)dTotal * 100.0;
+                g_coreUsage[i].store(std::clamp((int)u, 0, 100));
             }
-            g_coreCount.store((int)currCores.size());
-            prevCores = currCores;
         }
+        g_coreCount.store((int)currCores.size());
+        prevCores.swap(currCores);
     }
 }
 
@@ -1032,6 +1058,7 @@ static json buildNetPushData(PusherState& st) {
 
 static json buildPushData(const std::string& topic, PusherState& st) {
     if (topic == "cpu") {
+        noteCpuDemand();
         return {
             {"usage", g_cpuUsage.load()},
             {"temp", getCpuTemperatureCelsius()},
@@ -1269,6 +1296,7 @@ void processCommand(const std::string &received) {
             j_out["type"] = "PROCESS_LIST";
             j_out["processes"] = procs_j;
         } else if (cmd == "CPU_PING") {
+            noteCpuDemand();
             j_out["type"] = "CPU_USAGE";
             j_out["usage"] = g_cpuUsage.load();
         } else if (cmd == "SWAP_PING") {
@@ -1291,6 +1319,7 @@ void processCommand(const std::string &received) {
             j_out["type"] = "CHARGE_CYCLES";
             j_out["cycles"] = getBatteryCycleCount().value_or(-1);
         } else if (cmd == "CORE_PING") {
+            noteCpuDemand();
             j_out["type"] = "CORE_USAGE";
             j_out["usage"] = g_cpuUsage.load();
             j_out["cores"] = buildCoresJson();
