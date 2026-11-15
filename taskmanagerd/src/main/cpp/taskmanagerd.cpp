@@ -135,44 +135,62 @@ static bool isCpuThermalType(const std::string& type) {
            (t.find("cluster") != std::string::npos);
 }
 
-int getCpuTemperatureCelsius() {
+// CPU temperature = hottest CPU-ish thermal zone. Phones expose a lot of
+// zones (108 on a Snapdragon 8 Gen 3) and their "type" never changes, so
+// the list of matching temp paths is built once and refreshed every 5 min
+// instead of re-reading every type file per call. The result itself is
+// cached for 1 s: push frames and CTEMP_PING both ask for it.
+static std::mutex g_thermalMutex;
+static std::vector<std::string> g_cpuZoneTempPaths;
+static std::chrono::steady_clock::time_point g_cpuZonesScannedAt{};
+static bool g_cpuZonesScanned = false;
+static int g_cpuTempCached = -1;
+static std::chrono::steady_clock::time_point g_cpuTempAt{};
+
+static void rescanCpuZones() {
+    g_cpuZoneTempPaths.clear();
     const std::string basePath = "/sys/class/thermal/";
     DIR* dir = opendir(basePath.c_str());
-    if (!dir) return -1;
-
+    if (!dir) return;
     struct dirent* entry;
-    int maxTemp = -1;
-
     while ((entry = readdir(dir)) != nullptr) {
         std::string name = entry->d_name;
         if (name.find("thermal_zone") == std::string::npos) continue;
-
         std::string zonePath = basePath + name;
         std::ifstream typeFile(zonePath + "/type");
         if (!typeFile.is_open()) continue;
-
         std::string type;
         std::getline(typeFile, type);
-        typeFile.close();
-
-        if (!isCpuThermalType(type)) continue;
-
-        std::ifstream tempFile(zonePath + "/temp");
-        if (!tempFile.is_open()) continue;
-
-        long raw = 0;
-        tempFile >> raw;
-        tempFile.close();
-
-        if (raw <= 0) continue;
-
-        int tempC = (raw > 1000) ? static_cast<int>(raw / 1000) : static_cast<int>(raw);
-        if (tempC >= 5 && tempC <= 100) {
-            maxTemp = std::max(maxTemp, tempC);
-        }
+        if (isCpuThermalType(type)) g_cpuZoneTempPaths.push_back(zonePath + "/temp");
     }
-
     closedir(dir);
+}
+
+int getCpuTemperatureCelsius() {
+    std::lock_guard<std::mutex> lock(g_thermalMutex);
+    auto now = std::chrono::steady_clock::now();
+    if (g_cpuZonesScanned && now - g_cpuTempAt < std::chrono::seconds(1)) return g_cpuTempCached;
+    if (!g_cpuZonesScanned || now - g_cpuZonesScannedAt > std::chrono::minutes(5)) {
+        rescanCpuZones();
+        g_cpuZonesScanned = true;
+        g_cpuZonesScannedAt = now;
+    }
+    int maxTemp = -1;
+    for (const auto& path : g_cpuZoneTempPaths) {
+        char buf[32];
+        int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+        if (fd < 0) continue;
+        ssize_t n = read(fd, buf, sizeof(buf) - 1);
+        close(fd);
+        if (n <= 0) continue;
+        buf[n] = '\0';
+        long raw = atol(buf);
+        if (raw <= 0) continue;
+        int tempC = (raw > 1000) ? static_cast<int>(raw / 1000) : static_cast<int>(raw);
+        if (tempC >= 5 && tempC <= 100) maxTemp = std::max(maxTemp, tempC);
+    }
+    g_cpuTempCached = maxTemp;
+    g_cpuTempAt = now;
     return maxTemp;
 }
 
