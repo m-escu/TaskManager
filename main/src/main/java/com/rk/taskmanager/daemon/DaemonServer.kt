@@ -62,6 +62,12 @@ object DaemonServer {
     private var readerJob: Job? = null
     private var writerJob: Job? = null
 
+    // Kills the daemon process of the current connection. The reader sits in
+    // a blocking readLine() that coroutine cancellation cannot interrupt, so
+    // stop() must end the process (EOF) before joining, or it hangs forever
+    // on a silent daemon — and leaves an orphaned root process behind.
+    private var terminateProcess: () -> Unit = {}
+
     /** Latest error that caused a connection attempt to fail, if any. */
     var lastError: String? = null
         private set
@@ -87,7 +93,11 @@ object DaemonServer {
      * until the daemon's HELLO arrives (max 5s), validates the protocol
      * version, and only then reports the connection as ready.
      */
-    suspend fun start(input: InputStream, output: OutputStream): Boolean {
+    suspend fun start(
+        input: InputStream,
+        output: OutputStream,
+        terminate: () -> Unit = {},
+    ): Boolean {
         if (readerJob?.isActive == true) {
             log("Daemon already running, ignoring start request")
             return true
@@ -97,6 +107,7 @@ object DaemonServer {
         failAllPending("new connection attempt")
         lastError = null
         helloSignal = CompletableDeferred()
+        terminateProcess = terminate
 
         startHandling(input, output)
 
@@ -217,6 +228,8 @@ object DaemonServer {
     suspend fun stop() {
         log("Stopping daemon I/O...")
         isConnected = false
+        runCatching { terminateProcess() }
+        terminateProcess = {}
         readerJob?.cancelAndJoin()
         readerJob = null
         writerJob?.cancelAndJoin()

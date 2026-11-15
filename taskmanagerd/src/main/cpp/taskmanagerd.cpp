@@ -403,12 +403,13 @@ static long readStarttimeRaw(int pid) {
     buf[n] = '\0';
     char* p = strrchr(buf, ')');
     if (!p || p[1] != ' ') return -1;
-    // Fields after ") ": state(1) pgrp(2) ... starttime(19)
+    // Tokens after ") " start at stat field 3 (state), so token N is field
+    // N+2: ppid(2) pgrp(3) ... itrealvalue(19) starttime(20 == field 22).
     long starttime = -1;
     int tok = 0;
     char* save = nullptr;
     for (char* t = strtok_r(p + 2, " ", &save); t != nullptr; t = strtok_r(nullptr, " ", &save)) {
-        if (++tok == 19) { starttime = atol(t); break; }
+        if (++tok == 20) { starttime = atol(t); break; }
     }
     return starttime;
 }

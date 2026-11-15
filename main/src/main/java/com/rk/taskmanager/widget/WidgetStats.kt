@@ -106,7 +106,13 @@ object WidgetStats {
                 env = arrayOf<String?>(),
                 dir = "/",
             )
-            process.inputStream.bufferedReader().readLine()
+            try {
+                process.inputStream.bufferedReader().readLine()
+            } finally {
+                // One remote process per sample at up to 1 Hz: never leave
+                // them behind in the Shizuku server.
+                runCatching { process.destroy() }
+            }
         }.getOrNull()
     }
 

@@ -276,8 +276,16 @@ class WidgetLiveService : Service() {
             )
         )
 
+        // Every onStartCommand re-enters here (tile toggles, settings
+        // changes), so post the last sampled values rather than a blank
+        // placeholder that would otherwise stick until the next notification
+        // tick — up to notifRefreshSeconds (max 1 h) later.
         val notification = buildNotification(
-            cpu = -1, ramUsed = 0L, ramTotal = 0L, currentUA = -1L, tempTenthsC = -1
+            cpu = lastCpu,
+            ramUsed = lastRamUsed,
+            ramTotal = lastRamTotal,
+            currentUA = lastCurrentUA,
+            tempTenthsC = lastTempTenthsC,
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             // specialUse is unknown to <34; passing it there would crash.
