@@ -1,5 +1,6 @@
 package com.rk.taskmanager.screens
 
+import com.rk.taskmanager.daemon.PushHub
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -87,6 +88,7 @@ fun Processes(
     LaunchedEffect(Unit) {
         if (Settings.procAutoRefresh){
             while (isActive){
+                PushHub.awaitForeground()
                 viewModel.refreshProcessesAuto()
                 delay(5000)
             }

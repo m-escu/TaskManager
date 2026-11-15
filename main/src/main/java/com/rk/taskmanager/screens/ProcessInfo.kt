@@ -1,5 +1,6 @@
 package com.rk.taskmanager.screens
 
+import com.rk.taskmanager.daemon.PushHub
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -414,6 +415,7 @@ fun ProcessInfo(
                     // cross-talk with other concurrent viewers).
                     LaunchedEffect(proc) {
                         while (isActive) {
+                            PushHub.awaitForeground()
                             val response = DaemonServer.request(
                                 JSONObject()
                                     .put("cmd", "PING_PID_CPU")
@@ -498,6 +500,7 @@ fun ProcessInfo(
                     val startTimeTicks = proc!!.proc.startTime
                     LaunchedEffect(startTimeTicks) {
                         while (isActive) {
+                            PushHub.awaitForeground()
                             elapsed = elapsedFromStartTime(startTimeTicks)
                             delay(1000)
                         }
@@ -603,6 +606,7 @@ fun ProcessInfo(
 
                 LaunchedEffect(proc!!.proc.pid) {
                     while (isActive) {
+                        PushHub.awaitForeground()
                         val response = DaemonClient.pss(proc.proc.pid, timeoutMs = 2_000)
                         pssState.value = when {
                             response == null -> PssState.Unavailable

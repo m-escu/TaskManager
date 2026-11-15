@@ -100,6 +100,7 @@ fun CPU(modifier: Modifier = Modifier, viewModel: ProcessViewModel) {
     // can update this screen (the legacy type-matching consumer is gone).
     LaunchedEffect(Unit) {
         while (isActive) {
+            PushHub.awaitForeground()
             val response = DaemonServer.request(
                 JSONObject().put("cmd", "CTEMP_PING"),
                 timeoutMs = 2_000,

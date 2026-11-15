@@ -52,6 +52,17 @@ object PushHub {
     @Volatile
     private var foreground = false
 
+    private val foregroundState = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+    /**
+     * Suspends while the UI is in the background. Compose effects keep
+     * running when the activity is stopped, so polling loops call this
+     * before each round instead of hitting the daemon for an invisible UI.
+     */
+    suspend fun awaitForeground() {
+        foregroundState.first { it }
+    }
+
     /** True while the UI is visible (MainActivity between onStart and onStop). */
     val isForeground: Boolean get() = foreground
 
@@ -79,6 +90,7 @@ object PushHub {
 
     fun setForeground(value: Boolean) {
         foreground = value
+        foregroundState.value = value
         ensureStarted()
     }
 

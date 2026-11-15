@@ -439,6 +439,7 @@ fun NetScreen(modifier: Modifier = Modifier) {
         var prev: Map<Int, LongArray> = baseline
         var prevStamp = System.currentTimeMillis()
         while (isActive) {
+            PushHub.awaitForeground()
             delay(LIVE_RATE_SAMPLE_MS)
             val cur = queryPerAppUsage(context, anchor)
             if (cur == null) {
