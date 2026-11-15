@@ -88,7 +88,8 @@ object WidgetRefreshScheduler {
     /** Drops the alarm (last widget removed). */
     fun cancel(context: Context) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-        pendingIntent(context).cancel()
+        // am.cancel, not PendingIntent.cancel() — see schedule().
+        am.cancel(pendingIntent(context))
     }
 }
 
@@ -105,10 +106,12 @@ class WidgetRefreshReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.Default).launch {
             try {
                 WidgetRefresher.refresh(context)
-                WidgetRefreshScheduler.schedule(context)
             } catch (t: Throwable) {
                 Log.w(TAG, "scheduled refresh failed", t)
             } finally {
+                // Re-arm even when this refresh failed: one transient error
+                // must not break the chain until the 30-minute system update.
+                runCatching { WidgetRefreshScheduler.schedule(context) }
                 pendingResult.finish()
             }
         }

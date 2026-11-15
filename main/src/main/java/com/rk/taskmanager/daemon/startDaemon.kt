@@ -21,6 +21,10 @@ suspend fun startDaemon(
 ): DaemonResult = daemonStartMutex.withLock {
     val daemonFile = File(application!!.applicationInfo.nativeLibraryDir, "libtaskmanagerd.so")
     withContext(Dispatchers.IO) {
+        // Callers queued on the mutex while another start succeeded must not
+        // spawn a second daemon: DaemonServer.start would report "already
+        // running" and the fresh root/Shizuku process would be orphaned.
+        if (isConnected) return@withContext DaemonResult.OK
         try {
             when (mode) {
                 WorkingMode.SHIZUKU.id -> {
@@ -38,7 +42,9 @@ suspend fun startDaemon(
                         dir = "/"
                     )
 
-                    val started = DaemonServer.start(process.inputStream, process.outputStream)
+                    val started = DaemonServer.start(process.inputStream, process.outputStream) {
+                        process.destroy()
+                    }
                     if (!started) {
                         return@withContext DaemonResult.DAEMON_REFUSED.also {
                             it.message = DaemonServer.lastError ?: "Failed to start daemon I/O"
@@ -62,7 +68,9 @@ suspend fun startDaemon(
                     processBuilder.directory(File("/"))
 
                     val process = processBuilder.start()
-                    val started = DaemonServer.start(process.inputStream, process.outputStream)
+                    val started = DaemonServer.start(process.inputStream, process.outputStream) {
+                        process.destroy()
+                    }
                     if (!started) {
                         return@withContext DaemonResult.DAEMON_REFUSED.also {
                             it.message = DaemonServer.lastError ?: "Failed to start daemon I/O"
