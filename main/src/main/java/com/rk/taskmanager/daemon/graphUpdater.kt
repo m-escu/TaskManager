@@ -24,7 +24,7 @@ import kotlin.time.Duration.Companion.milliseconds
 // recreate adds another collector and every graph gets duplicate points.
 private val updaterStarted = AtomicBoolean(false)
 
-private fun updateSwap(used: Long, total: Long) {
+private suspend fun updateSwap(used: Long, total: Long) {
     val safeTotal = if (total > 0L) total else 1L
     val percentage = (used.toFloat() / safeTotal.toFloat()) * 100
     updateRamAndSwapGraph(percentage.toInt(), used, total)
